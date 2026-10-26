@@ -1,0 +1,1 @@
+"""Classical full-matrix equalizers."""
