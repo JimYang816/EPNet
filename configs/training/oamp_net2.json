@@ -1,0 +1,26 @@
+{
+  "datasets": {
+    "NOF1": "data/processed/nof1_compact_20261026_final",
+    "NCS1": "data/processed/ncs1_compact_20261026_nmse"
+  },
+  "output": "outputs/runs/oamp_net2_compensated",
+  "model": {"layers": 10, "variance_floor": 5e-13},
+  "training": {
+    "input_view": "compensated",
+    "epochs": 200,
+    "patience": 20,
+    "learning_rate": 0.001,
+    "seed": 20261030,
+    "batch_size": 8,
+    "frame_batch_size": 8
+  },
+  "evaluation": {
+    "input_view": "compensated",
+    "batch_size": 8,
+    "algorithm_parameters": {
+      "single_tap_mmse": {},
+      "full_matrix_lmmse": {},
+      "mmse_pic": {"iterations": 10, "damping": 0.5, "variance_floor": 1e-10}
+    }
+  }
+}

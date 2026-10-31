@@ -1,4 +1,4 @@
-"""Run the two-MMSE BER comparison on complete compact-v2 test splits."""
+"""Run configured equalizers on identical complete compensated-CSI test splits."""
 from __future__ import annotations
 
 import argparse
@@ -20,10 +20,11 @@ def main():
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
+    parser.add_argument("--baselines-only", action="store_true", help="Run MMSE baselines and MMSE-PIC without learned checkpoints")
     parser.add_argument("--input-view", choices=("raw", "compensated"))
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "all"), default=[],
-                       help="Recompute these detectors; still publish both MMSE curves")
+                       help="Recompute selected traditional detectors; all also refreshes OAMP-Net2")
     modes.add_argument("--plot-only", action="store_true", help="Redraw saved complete reports without data or GPU")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -40,10 +41,17 @@ def main():
         for channel, dataset in config["datasets"].items():
             if args.channel and channel != args.channel:
                 continue
-            evaluate(dataset, Path(config["output"])/channel.lower(), backend,
+            checkpoints = {} if args.baselines_only else config.get("checkpoints", {}).get(channel, {})
+            evaluator = evaluate
+            extra = {}
+            if checkpoints:
+                from src.evaluation.unified import evaluate as evaluate_unified
+                evaluator = evaluate_unified
+                extra["checkpoints"] = checkpoints
+            evaluator(dataset, Path(config["output"])/channel.lower(), backend,
                      batch_size=args.batch_size if args.batch_size is not None else config["batch_size"],
                      algorithm_parameters=config.get("algorithms"), force=args.force,
-                     cache_dir=config.get("cache_dir"), input_view=args.input_view or config.get("input_view", "compensated"))
+                     cache_dir=config.get("cache_dir"), input_view=args.input_view or config.get("input_view", "compensated"), **extra)
 
 
 if __name__ == "__main__":

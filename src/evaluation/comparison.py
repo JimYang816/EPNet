@@ -1,4 +1,4 @@
-"""Two MMSE equalizers with content-addressed, per-detector reuse."""
+"""Traditional equalizers with content-addressed, per-detector reuse."""
 from __future__ import annotations
 
 from contextlib import ExitStack
@@ -16,7 +16,7 @@ from src.evaluation import fingerprints as fp
 from src.evaluation.inputs import prepare_batch
 from src.evaluation.nmse import evaluate_nmse
 from src.evaluation.comparison_plots import plot_ber, publish_report, replot
-from src.evaluation.registry import ALGORITHMS, CURVES, resolve_parameters, resolve_force
+from src.evaluation.registry import resolve_parameters, resolve_force, selected_algorithms
 from src.evaluation.result_cache import CacheEntry, DEFAULT_CACHE
 from src.evaluation.scoring import score_batch
 
@@ -58,6 +58,9 @@ def evaluate(dataset_path, run, backend, *, batch_size=8,
     if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
         raise ValueError("Batch size must be a positive integer")
     parameters = resolve_parameters(algorithm_parameters)
+    algorithms = selected_algorithms(parameters)
+    if "mmse_pic" in parameters and input_view != "compensated":
+        raise ValueError("MMSE-PIC comparison requires compensated CSI")
     forced = resolve_force(force)
     run, cache = Path(run), Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE
     run.mkdir(parents=True, exist_ok=True)
@@ -76,7 +79,7 @@ def evaluate(dataset_path, run, backend, *, batch_size=8,
         with ExitStack() as stack:
             entries = {}
             shape = (nsnr, count, 2)
-            for algorithm in ALGORITHMS:
+            for algorithm in algorithms:
                 scientific_identity = dict(schema=ALGORITHM_SCHEMA, algorithm=algorithm.identifier, input_view=ds.input_view,
                     data={name: identity.files[name] for name in ("test.h5", "model.h5")},
                     parameters=parameters[algorithm.identifier],
@@ -92,14 +95,14 @@ def evaluate(dataset_path, run, backend, *, batch_size=8,
                 LOG.info("%s %s: %s (%d/%d existing blocks)", ds.channel, algorithm.label,
                          "reuse" if entry.reused else "compute/resume", entry.resumed_blocks, nsnr*count*2)
             thermal = None
-            if any(not np.all(entries[a.identifier].complete) for a in ALGORITHMS[1:]):
+            if any(not np.all(entries[a.identifier].complete) for a in algorithms[1:]):
                 thermal = make_whitener(ds._shared["unit_rf_noise_covariance"][:], backend)
             for si, snr in enumerate(ds.snr_db):
                 for d in range(2):
                     for start in range(0, count, batch_size):
                         stop = min(start+batch_size, count)
                         pending = [(a, [fi for fi in range(start, stop)
-                                        if not entries[a.identifier].complete[si, fi, d]]) for a in ALGORITHMS]
+                                        if not entries[a.identifier].complete[si, fi, d]]) for a in algorithms]
                         pending = [(a, frames) for a, frames in pending if frames]
                         if not pending:
                             continue
@@ -121,10 +124,10 @@ def evaluate(dataset_path, run, backend, *, batch_size=8,
                     LOG.info("%s SNR=%g D%d finished", ds.channel, snr, d+1)
                 write_json(run/"progress.json", dict(channel=ds.channel, snr_db=float(snr),
                     algorithms={a.identifier: dict(completed_blocks=int(entries[a.identifier].complete.sum()),
-                        total_blocks=nsnr*count*2) for a in ALGORITHMS}, elapsed_seconds=time.perf_counter()-started))
+                        total_blocks=nsnr*count*2) for a in algorithms}, elapsed_seconds=time.perf_counter()-started))
             bits = count*2*ndata*2
             identity.assert_unchanged()
-            for algorithm in ALGORITHMS:
+            for algorithm in algorithms:
                 entry = entries[algorithm.identifier]
                 totals = entry.read("bit_errors").sum(axis=(1, 2))
                 report_curves[algorithm.label] = dict(identifier=algorithm.identifier, errors=totals.tolist(),

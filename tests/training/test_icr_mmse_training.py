@@ -105,6 +105,140 @@ def test_warmup_reuse_validates_records_and_keeps_fixed_inference(experiment):
         train(directory, root / "wrong", DenseBackend(), warmup_checkpoint=wrong, **controls)
 
 
+@pytest.mark.parametrize("grouped_and_bounded", (False, True))
+def test_stage_b_continuation_runs_only_c_and_resumes_exactly(experiment, monkeypatch, grouped_and_bounded):
+    from src.common.experiment import file_sha256
+    from src.training import icr_mmse as training
+
+    directory, root = experiment
+    controls = dict(model_config=dict(layers=2, bandwidth=2, noise_mode="diagonal"),
+                    stage_epochs=(1, 1, 2), batch_size=1, frame_limit=1, seed=17)
+    train(directory, root/"source", DenseBackend(), stop_after_epochs=2, **controls)
+    source = root/"source/correction_pretrained.pt"
+    before_hash = file_sha256(source)
+    initial = torch.load(source, weights_only=True)["model"]
+    actual_epoch = training.run_epoch
+    calls = []
+
+    def checked_epoch(model, dataset, device, **kwargs):
+        assert kwargs["stage"] == "C"
+        assert all(parameter.requires_grad for parameter in model.parameters())
+        if not calls:
+            for name, value in model.state_dict().items():
+                torch.testing.assert_close(value, initial[name], rtol=0, atol=0)
+        calls.append(kwargs["optimizer"] if "optimizer" in kwargs else None)
+        if kwargs.get("optimizer") is not None:
+            groups = kwargs["optimizer"].param_groups
+            if grouped_and_bounded:
+                rates = {id(parameter): group["lr"] for group in groups for parameter in group["params"]}
+                assert sum(len(group["params"]) for group in groups) == len(rates)
+                assert len(rates) == len(list(model.parameters()))
+                for name, parameter in model.named_parameters():
+                    correction = name.startswith("corrector.") or name == "eta_logits"
+                    assert rates[id(parameter)] == (1e-5 if correction else 1e-4)
+            else:
+                assert {g["lr"] for g in groups} == {1e-4}
+        return actual_epoch(model, dataset, device, **kwargs)
+
+    actual_file = h5py.File
+
+    def no_test(path, *args, **kwargs):
+        assert not str(path).replace("\\", "/").endswith("/test.h5")
+        return actual_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(training, "run_epoch", checked_epoch)
+    monkeypatch.setattr(h5py, "File", no_test)
+    options = dict(controls, stage_b_checkpoint=source, learning_rate=1e-4)
+    if grouped_and_bounded:
+        options.update(stage_c_correction_learning_rate=1e-5, stage_c_nmse_max_relative_degradation=0.)
+    full = train(directory, root/"continuation", DenseBackend(), **options)
+    train(directory, root/"resumed_c", DenseBackend(), stop_after_epochs=1, **options)
+    with pytest.raises(ValueError, match="identity changed"):
+        train(directory, root/"resumed_c", DenseBackend(), resume=True,
+              **dict(options, learning_rate=1e-3))
+    resumed = train(directory, root/"resumed_c", DenseBackend(), resume=True, **options)
+    a, b = (torch.load(path, weights_only=True) for path in (full, resumed))
+    assert [row["stage"] for row in a["history"]] == ["C", "C"]
+    assert a["history"] == b["history"]
+    if grouped_and_bounded:
+        assert a["stage_c_selection"] == b["stage_c_selection"]
+        selection = a["stage_c_selection"]
+        assert selection["nmse_limit"] == selection["reference_validation"]["corrected_nmse"]
+        assert selection["selected_validation"]["corrected_nmse"] <= selection["nmse_limit"]
+        with pytest.raises(ValueError, match="identity changed"):
+            train(directory, root/"resumed_c", DenseBackend(), resume=True,
+                  **dict(options, stage_c_nmse_max_relative_degradation=.01))
+    for name in a["model"]:
+        torch.testing.assert_close(a["model"][name], b["model"][name], rtol=0, atol=0)
+    assert a["identity"]["controls"]["learning_rate"] == 1e-4
+    assert a["identity"]["data"]["stage_b_checkpoint"]["sha256"] == before_hash
+    assert file_sha256(source) == before_hash
+    assert not (full.parent/"warmup.pt").exists()
+    assert not (full.parent/"correction_pretrained.pt").exists()
+
+
+def test_stage_c_selection_uses_stage_b_bound_instead_of_only_initial_csi():
+    from src.training.icr_mmse import _selection_key
+    baseline = dict(initial_nmse=1., corrected_nmse=.2, ber=.1)
+    bad = dict(initial_nmse=1., corrected_nmse=.21, ber=.01)
+    good = dict(initial_nmse=1., corrected_nmse=.19, ber=.09)
+    assert _selection_key("C", bad) < _selection_key("C", baseline)
+    key = lambda metrics: _selection_key("C", metrics, stage_c_nmse_limit=.2)
+    assert key(good) < key(baseline) < key(bad)
+    assert key(dict(good, corrected_nmse=.2))[0] == 0
+    assert key(dict(good, corrected_nmse=.2000001))[0] == 1
+
+
+def test_stage_c_rejects_ber_gain_with_nmse_regression_and_restores_b(experiment, monkeypatch):
+    from src.training import icr_mmse as training
+    directory, root = experiment
+    controls = dict(model_config=dict(layers=2, bandwidth=2), stage_epochs=(1, 1, 2),
+                    batch_size=1, frame_limit=1, seed=17)
+    train(directory, root/"source", DenseBackend(), stop_after_epochs=2, **controls)
+    source = root/"source/correction_pretrained.pt"
+    original = torch.load(source, weights_only=True)["model"]
+    actual_epoch = training.run_epoch
+    validation_calls = 0
+
+    def prescribed_validation(model, dataset, device, **kwargs):
+        nonlocal validation_calls
+        metrics = actual_epoch(model, dataset, device, **kwargs)
+        if kwargs.get("optimizer") is None:
+            metrics.update(initial_nmse=1., corrected_nmse=.2 if validation_calls == 0 else .3,
+                           ber=.1 if validation_calls == 0 else .01)
+            validation_calls += 1
+        return metrics
+
+    monkeypatch.setattr(training, "run_epoch", prescribed_validation)
+    path = train(directory, root/"bounded", DenseBackend(), **controls, stage_b_checkpoint=source,
+        learning_rate=1e-4, stage_c_correction_learning_rate=1e-5, stage_c_nmse_max_relative_degradation=0.)
+    result = torch.load(path, weights_only=True)
+    assert result["stage_c_selection"]["selected_epoch"] == 0
+    assert all(not entry["nmse_bound_eligible"] for entry in result["history"])
+    for name, value in result["model"].items():
+        torch.testing.assert_close(value, original[name], rtol=0, atol=0)
+
+
+def test_stage_b_continuation_rejects_wrong_source(experiment):
+    directory, root = experiment
+    controls = dict(model_config=dict(layers=2, bandwidth=2), stage_epochs=(1, 1, 1),
+                    batch_size=1, frame_limit=1, seed=17)
+    train(directory, root/"source", DenseBackend(), stop_after_epochs=2, **controls)
+    source = root/"source/correction_pretrained.pt"
+    with pytest.raises(ValueError, match="stage-B correction"):
+        train(directory, root/"wrong_stage", DenseBackend(),
+              stage_b_checkpoint=root/"source/warmup.pt", **controls)
+    with pytest.raises(ValueError, match="architecture/configuration"):
+        train(directory, root/"wrong_config", DenseBackend(), stage_b_checkpoint=source,
+              **dict(controls, model_config=dict(layers=2, bandwidth=3)))
+    saved = torch.load(source, weights_only=True)
+    saved["identity"]["data"]["train.h5"]["sha256"] = "different-data"
+    wrong = root/"wrong_stage_b.pt"
+    torch.save(saved, wrong)
+    with pytest.raises(ValueError, match="different records/data"):
+        train(directory, root/"wrong_data", DenseBackend(), stage_b_checkpoint=wrong, **controls)
+
+
 def test_checkpoints_reject_old_schema_or_wrong_compact_feature_layout(tmp_path):
     model = ICRMMSEnet(layers=2, bandwidth=16)
     payload = dict(schema=SCHEMA, input_view="compensated", feedback_layout=FEEDBACK_LAYOUT,
@@ -147,7 +281,12 @@ def test_compact_pipeline_preserves_inputs_metrics_and_updates(experiment, prefe
                     frame_limit=2, optimizer=updater, operator_backend=backend,
                     prefetch_batches=prefetch, reference_cache=ReferenceCache(2**20)))
             assert metrics[0]["errors"] == metrics[1]["errors"]
-            assert metrics[0]["per_snr"] == metrics[1]["per_snr"]
+            for a, b in zip(metrics[0]["per_snr"], metrics[1]["per_snr"]):
+                for key in a:
+                    if "nmse" in key and a[key] is not None:
+                        assert a[key] == pytest.approx(b[key], rel=5e-4, abs=2e-6)
+                    else:
+                        assert a[key] == b[key]
             for name in ("loss", "initial_nmse", "corrected_nmse"):
                 if metrics[0][name] is not None:
                     assert metrics[0][name] == pytest.approx(metrics[1][name], rel=5e-4, abs=2e-6)

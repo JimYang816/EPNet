@@ -8,6 +8,19 @@
   "batch_size": 8,
   "algorithms": {
     "single_tap_mmse": {},
-    "full_matrix_lmmse": {}
+    "full_matrix_lmmse": {},
+    "mmse_pic": {"iterations": 10, "damping": 0.5, "variance_floor": 1e-10}
+  },
+  "checkpoints": {
+    "NOF1": {
+      "udnet": "outputs/runs/udnet_compensated/nof1/best.pt",
+      "oamp_net2": "outputs/runs/oamp_net2_compensated/nof1/best.pt",
+      "icr_mmse": "outputs/runs/icr_mmse_compensated/nof1/seed_20261028/icr_mmse.pt"
+    },
+    "NCS1": {
+      "udnet": "outputs/runs/udnet_compensated/ncs1/best.pt",
+      "oamp_net2": "outputs/runs/oamp_net2_compensated/ncs1/best.pt",
+      "icr_mmse": "outputs/runs/icr_mmse_compensated/ncs1/seed_20261028/icr_mmse.pt"
+    }
   }
 }

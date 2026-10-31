@@ -1,0 +1,32 @@
+{
+  "input_view": "compensated",
+  "output": "outputs/runs/icr_gate_interleaved_20261029",
+  "datasets": {
+    "NOF1": "data/processed/nof1_compact_20261026_final",
+    "NCS1": "data/processed/ncs1_compact_20261026_nmse"
+  },
+  "channels": ["NOF1", "NCS1"],
+  "seeds": [20261028],
+  "deterministic": true,
+  "model": {
+    "precision": "complex64", "noise_mode": "diagonal", "bandwidth": 16,
+    "correction_mode": "iterative", "use_uncertainty": true,
+    "equalizer_repeats": 1, "window_size": 32, "center_size": 16
+  },
+  "channel_options": {
+    "NOF1": {"layers": 22, "lambda_h": 0.01},
+    "NCS1": {"layers": 8, "lambda_h": 1.0}
+  },
+  "training": {
+    "stage_epochs": [10, 10, 10], "batch_size": 8,
+    "learning_rate": 0.001, "stage_c_learning_rate": 0.0001,
+    "stage_c_correction_learning_rate": 0.00001,
+    "sample_order": "snr_interleaved", "operator_backend": "dense_device",
+    "prefetch_batches": 2, "reference_cache_mib": 12288,
+    "per_snr_acceptance": {
+      "ber_relative_tolerance": 0.0, "ber_absolute_tolerance": 0.0,
+      "nmse_relative_tolerance": 0.0
+    }
+  },
+  "evaluation": {"batch_size": 2, "bootstrap_samples": 2000}
+}

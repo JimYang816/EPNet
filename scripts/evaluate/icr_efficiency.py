@@ -1,4 +1,4 @@
-"""Benchmark four compensated-CSI detectors in four fresh, sequential processes."""
+"""Benchmark compensated-CSI detectors in fresh processes; optional six-way mode."""
 from __future__ import annotations
 
 import argparse
@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--comparison-report", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--udnet-checkpoint", type=Path, required=True)
+    parser.add_argument("--oamp-net2-checkpoint", type=Path, help="Include OAMP-Net2 and MMSE-PIC for six-way timing")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--batch-size", type=int, default=2)
@@ -22,7 +23,7 @@ def main():
     args = parser.parse_args()
     result = benchmark(args.dataset, args.comparison_report, args.checkpoint, args.udnet_checkpoint,
         output=args.output, device=args.device, batch_size=args.batch_size,
-        frame_limit=args.max_frames, threads=args.threads)
+        frame_limit=args.max_frames, threads=args.threads, oamp_net2_checkpoint=args.oamp_net2_checkpoint)
     if not args.output:
         print(json.dumps(result, ensure_ascii=False, indent=2))
 

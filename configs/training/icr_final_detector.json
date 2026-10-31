@@ -1,0 +1,7 @@
+{
+  "source_root": "outputs/runs/icr_gate_interleaved_20261029",
+  "output": "outputs/runs/icr_final_detector_20261029",
+  "channel": "NOF1",
+  "epochs": 2,
+  "learning_rate": 0.0001
+}

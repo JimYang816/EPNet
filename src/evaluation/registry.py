@@ -22,8 +22,15 @@ ALGORITHMS = (
     Algorithm("single_tap_mmse", "Single-tap MMSE", "src.algorithms.MMSE.single_tap"),
     Algorithm("full_matrix_lmmse", "Full-matrix LMMSE", "src.algorithms.MMSE.full_matrix", MATRIX),
 )
+# Keep the original defaults for callers producing the historical two-MMSE
+# report. The unified experiment explicitly opts into the new comparator.
+OPTIONAL_ALGORITHMS = (
+    Algorithm("mmse_pic", "MMSE-PIC", "src.algorithms.mmse_pic.detector", MATRIX),
+)
+AVAILABLE_ALGORITHMS = ALGORITHMS+OPTIONAL_ALGORITHMS
 CURVES = tuple(a.label for a in ALGORITHMS)
-IDENTIFIERS = tuple(a.identifier for a in ALGORITHMS)
+IDENTIFIERS = tuple(a.identifier for a in AVAILABLE_ALGORITHMS)
+SUPPORTED_CURVES = tuple(a.label for a in AVAILABLE_ALGORITHMS)+("UDNet", "OAMP-Net2", "ICR-MMSE-Net")
 
 
 def resolve_parameters(algorithm_parameters=None):
@@ -31,12 +38,27 @@ def resolve_parameters(algorithm_parameters=None):
     if set(supplied)-set(IDENTIFIERS):
         raise ValueError(f"Unknown algorithms: {sorted(set(supplied)-set(IDENTIFIERS))}")
     result = {}
-    for algorithm in ALGORITHMS:
+    for algorithm in AVAILABLE_ALGORITHMS:
+        if algorithm in OPTIONAL_ALGORITHMS and algorithm.identifier not in supplied:
+            continue
         override = supplied.get(algorithm.identifier, {})
-        if not isinstance(override, dict) or override:
+        if algorithm.identifier == "mmse_pic":
+            from src.algorithms.mmse_pic.detector import controls
+            if not isinstance(override, dict):
+                raise ValueError("Invalid parameters for mmse_pic")
+            try:
+                result[algorithm.identifier] = controls(**override)
+            except TypeError as error:
+                raise ValueError("Invalid parameters for mmse_pic") from error
+        elif not isinstance(override, dict) or override:
             raise ValueError(f"Invalid parameters for {algorithm.identifier}")
-        result[algorithm.identifier] = {}
+        else:
+            result[algorithm.identifier] = {}
     return result
+
+
+def selected_algorithms(parameters):
+    return tuple(a for a in AVAILABLE_ALGORITHMS if a.identifier in parameters)
 
 
 def resolve_force(force):

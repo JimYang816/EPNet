@@ -1,4 +1,4 @@
-"""Label-free batch contract shared by the four comparison equalizers."""
+"""Label-free batch contract shared by the comparison equalizers."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

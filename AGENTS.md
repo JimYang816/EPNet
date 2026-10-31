@@ -5,7 +5,7 @@
 ## 文档与当前实验范围
 
 - 数据生成已完成，后续所有均衡算法统一使用当前已验收的数据集及既定划分进行训练和测试。
-- 主对比仅包含 Single-tap MMSE、Full-matrix LMMSE、UDNet 和 ICR-MMSE-Net；EP、Robust EP 不再参与性能或效率对比。
+- 主对比包含 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net；EP、Robust EP 不再参与性能或效率对比。
 - 默认训练、验证、测试必须使用已验收的 **compensated CSI**：NOF1 平均 NMSE 随 SNR 0→30 dB 为 **−12.70→−18.30 dB**，NCS1 为 **−6.20→−10.67 dB**。未经用户明确要求，不得改为 raw CSI 或修改这些目标。raw 数据保留，仅供显式诊断；不得复用 raw 视图的训练检查点、特征或评测缓存。
 - `README.md` 仅保留项目简要说明及文件目录结构；未经用户明确允许，不得修改。
 - NCS1 与 NOF1 使用 `configs/data/` 中的两份固定配置，共用同一实际 DPSS 时间基与延迟支撑。

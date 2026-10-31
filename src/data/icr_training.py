@@ -94,10 +94,14 @@ def compact_supervision(dataset, keys, channel, bandwidth, cache, *, precision):
 
 def _cpu_batches(dataset, *, include_reference, compact_reference, bandwidth, cache,
                  pin_memory, batch_size, frame_limit, precision, operator_backend,
-                 snr_indices, frame_indices):
+                 snr_indices, frame_indices, sampling_seed=None):
     source = dense_input_batches if operator_backend == "dense_device" else input_batches
     source_options = (dict(reference_cache=cache) if operator_backend == "dense_device"
                       else dict(operator_backend=operator_backend))
+    if sampling_seed is not None:
+        if operator_backend != "dense_device":
+            raise ValueError("SNR-interleaved training requires dense_device")
+        source_options["sampling_seed"] = sampling_seed
     for inputs, keys in source(dataset, batch_size=batch_size, frame_limit=frame_limit,
                               precision=precision, snr_indices=snr_indices, frame_indices=frame_indices,
                               **source_options):
@@ -191,7 +195,7 @@ def _prefetched(dataset, options, depth):
 def training_batches(dataset, *, device="cpu", batch_size=2, frame_limit=None,
                      precision="complex64", operator_backend="dense_device", include_reference=True,
                      compact_reference=False, bandwidth=16, cache=None, prefetch_batches=2,
-                     pin_memory=True, snr_indices=None, frame_indices=None):
+                     pin_memory=True, snr_indices=None, frame_indices=None, sampling_seed=None):
     if isinstance(prefetch_batches, bool) or not isinstance(prefetch_batches, int) or prefetch_batches < 0:
         raise ValueError("Prefetch depth must be a nonnegative integer")
     cuda = torch.device(device).type == "cuda"
@@ -199,7 +203,7 @@ def training_batches(dataset, *, device="cpu", batch_size=2, frame_limit=None,
         bandwidth=bandwidth, cache=cache if cache is not None else ReferenceCache(),
         pin_memory=bool(pin_memory and cuda), batch_size=batch_size, frame_limit=frame_limit,
         precision=precision, operator_backend=operator_backend, snr_indices=snr_indices,
-        frame_indices=frame_indices)
+        frame_indices=frame_indices, sampling_seed=sampling_seed)
     shared, bases = {}, {}
 
     def move(value):

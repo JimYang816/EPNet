@@ -1,0 +1,7 @@
+{
+  "input_view": "compensated",
+  "source_root": "outputs/runs/icr_mmse_compensated",
+  "output": "outputs/runs/icr_stage_c_lr1e4_20261029",
+  "channels": ["NOF1", "NCS1"],
+  "learning_rate": 0.0001
+}

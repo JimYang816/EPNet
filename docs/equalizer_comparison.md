@@ -1,5 +1,9 @@
 # NOF1 / NCS1 均衡评测与增量缓存
 
+2026-10-30：默认配置已扩展为六算法统一评测，新增 OAMP-Net2 和 MMSE-PIC。
+训练、六算法汇总及效率测试见 [新增对比算法说明](additional_equalizers.md)。
+本页下文保留原两种 MMSE 的接口与缓存说明；`--baselines-only` 运行默认配置中的三种传统方法。
+
 入口为 `python -m scripts.evaluate.compare --device cuda --threads 2`，配置位于
 `configs/evaluation/ber_comparison.json`。NOF1 使用 `nof1_compact_20261026_final`，
 NCS1 使用最新调整后的 `ncs1_compact_20261026_nmse`。每信道输出 BER–SNR 图、
