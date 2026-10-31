@@ -163,12 +163,12 @@ def verify_layout(fig):
             raise ValueError(f"Figure text is clipped: {label.get_text()}")
 
 
-def export(fig, output, stem, title):
+def export(fig, output, stem, title, *, subject="Formal A-D ablation; accepted compensated CSI test data"):
     verify_layout(fig)
     for suffix in ("pdf", "svg", "png"):
         options = dict(dpi=600, facecolor="white")
         if suffix == "pdf":
-            options["metadata"] = dict(Title=title, Subject="Formal A-D ablation; accepted compensated CSI test data")
+            options["metadata"] = dict(Title=title, Subject=subject)
         fig.savefig(output/(stem+"."+suffix), **options)
     plt.close(fig)
 
