@@ -1,4 +1,4 @@
-"""UDNet: independent of EPNet and the four-baseline registry."""
+"""UDNet: independent of the traditional MMSE baseline registry."""
 
 from .model import UDNet
 

@@ -18,8 +18,8 @@ from src.evaluation.result_cache import FileLock
 
 
 def plot_ber(report, path):
-    colors = ("#667085", "#2477b3", "#df8028", "#15845b")
-    markers = ("o", "s", "^", "D")
+    colors = ("#667085", "#2477b3")
+    markers = ("o", "s")
     with plt.rc_context({"font.size": 11, "axes.spines.top": False, "axes.spines.right": False}):
         fig, ax = plt.subplots(figsize=(7.5, 5.2))
         zero_seen = False
@@ -61,7 +61,7 @@ def plot_nmse(report, path):
 
 def validate_report(report):
     if not report.get("complete") or set(report.get("curves", {})) != set(CURVES):
-        raise ValueError("Plotting requires a complete four-algorithm report")
+        raise ValueError("Plotting requires a complete two-MMSE report")
     snr = np.asarray(report["snr_db"], dtype=float)
     if snr.ndim != 1 or not len(snr) or not np.all(np.isfinite(snr)):
         raise ValueError("Invalid SNR values in comparison report")
@@ -131,5 +131,12 @@ def publish_report(run, report, *, redraw_nmse=False):
 def replot(run):
     """Use saved values only, preserving every original generation record."""
     report = json.loads((Path(run)/"metrics.json").read_text(encoding="utf-8"))
+    retired = {"EP", "Robust EP"}
+    if retired.intersection(report.get("curves", {})):
+        report["curves"] = {name: curve for name, curve in report["curves"].items() if name not in retired}
+        report["parameters"] = {name: values for name, values in report.get("parameters", {}).items()
+                                if name not in {"ep", "robust_ep"}}
+        for field in ("robust_covariance", "ep", "paper_doi", "rejected_sites"):
+            report.pop(field, None)
     publish_report(run, report, redraw_nmse=True)
     return report

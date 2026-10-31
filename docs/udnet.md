@@ -117,9 +117,9 @@ python -m scripts.run.udnet --device cuda --threads 4
 
 充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。四种传统基线通过 `python -m scripts.evaluate.compare` 运行；包含UDNet与ICR-MMSE-Net的完整比较见 [联合修正方案](icr_mmse.md)。
 
-独立评测调用相同输入视图下的四基线评测器，由该评测器重新校验数据、输入构造、算法、Robust EP 训练协方差、评分、环境及 NMSE 依赖，检查每个缓存块的校验和。compensated 视图的 Robust EP 训练统计使用 `clean_observations-H_comp*x`。仅视图及依赖匹配的部分复用，不根据旧报告中的曲线直接认定缓存可用。UDNet 结果单独按输入视图、最佳模型 SHA256、输入/模型/评分代码和测试数据身份缓存，检查点也须通过输入视图校验。正式评测强制完整测试集全部 SNR、600 帧、D1/D2 和 512 数据槽，每 SNR 每算法 1,228,800 比特、UDNet 614,400 符号。
+独立评测调用相同输入视图下的两种 MMSE 基线评测器，由该评测器重新校验数据、输入构造、算法、评分、环境及 NMSE 依赖，检查每个缓存块的校验和；不再运行 EP、Robust EP 或读取其训练协方差。仅视图及依赖匹配的部分复用，不根据旧报告中的曲线直接认定缓存可用。UDNet 结果单独按输入视图、最佳模型 SHA256、输入/模型/评分代码和测试数据身份缓存，检查点也须通过输入视图校验。正式评测强制完整测试集全部 SNR、600 帧、D1/D2 和 512 数据槽，每 SNR 每算法 1,228,800 比特、UDNet 614,400 符号。
 
-每信道 `evaluation/` 输出 `metrics.json`、`report.html`、五算法 `ber_snr.png`、共享输入 CSI `nmse_snr.png`、UDNet `ser_snr.png`、`training_curves.png` 和分 SNR 验证过程图 `validation_by_snr.png`。NMSE 定义与现有比较完全相同：各帧各 D 的全矩阵线性相对平方误差先平均，再转 dB；它是各算法共享的输入质量指标。图中零错误按 0.5/总数显示并说明。
+每信道 `evaluation/` 输出 `metrics.json`、`report.html`、三算法 `ber_snr.png`、共享输入 CSI `nmse_snr.png`、UDNet `ser_snr.png`、`training_curves.png` 和分 SNR 验证过程图 `validation_by_snr.png`。NMSE 定义与现有比较完全相同：各帧各 D 的全矩阵线性相对平方误差先平均，再转 dB；它是各算法共享的输入质量指标。图中零错误按 0.5/总数显示并说明。
 
 正式流程逐信道完成后删除该信道的可重建特征缓存，保留检查点、历史、实际配置、指标和来源指纹。共享基线/结果缓存继续供既有比较复用，完整原始数据留服务器，任何数据和运行产物均不提交 Git。服务器按本地已测试并推送的提交拉取，重新检查 GPU/内存/磁盘后运行。最佳模型、完整恢复状态、报告、指标、配置及图表经 SSH 回传本地。
 
@@ -129,4 +129,4 @@ python -m scripts.run.udnet --device cuda --threads 4
 python -m pytest tests/algorithms/test_udnet.py tests/training/test_udnet_training.py -q
 ```
 
-测试覆盖真实物理载波槽、首尾零填充、中心无遗漏无重复覆盖、非数据槽隔离、双精度白化与缩减数据列伪逆、无 SNR 缩放、功率归一化、零信道和跨八个数量级接收增益的特征一致性与有效梯度、既有 QPSK 类别、首层与后续层残差公式、概率和与概率期望反馈、全部 22 层梯度、损失分母与分 SNR 指标权重、缓存损坏重建、恢复前后逐参数和验证指标精确一致、旧预处理检查点拒绝、数据/配置身份拒绝、HDF5 标签访问拦截，以及合成数据上的独立五算法评测与缓存复用。
+测试覆盖真实物理载波槽、首尾零填充、中心无遗漏无重复覆盖、非数据槽隔离、双精度白化与缩减数据列伪逆、无 SNR 缩放、功率归一化、零信道和跨八个数量级接收增益的特征一致性与有效梯度、既有 QPSK 类别、首层与后续层残差公式、概率和与概率期望反馈、全部 22 层梯度、损失分母与分 SNR 指标权重、缓存损坏重建、恢复前后逐参数和验证指标精确一致、旧预处理检查点拒绝、数据/配置身份拒绝、HDF5 标签访问拦截，以及合成数据上的独立三算法评测与缓存复用。

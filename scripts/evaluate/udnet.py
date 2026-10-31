@@ -1,4 +1,4 @@
-"""Independent complete UDNet/four-baseline comparison."""
+"""Independent complete UDNet/two-MMSE comparison."""
 from __future__ import annotations
 
 import argparse

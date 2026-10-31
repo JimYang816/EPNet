@@ -51,7 +51,7 @@ def verify_results(output, channel, config):
     seeds = config["selection"]["seeds"]
     if not repeats.get("complete") or [row["seed"] for row in repeats["repeats"]] != seeds:
         raise RuntimeError("Incomplete single-seed result")
-    required = {"ICR-MMSE-Net", "UDNet", "Single-tap MMSE", "Full-matrix LMMSE", "EP", "Robust EP"}
+    required = {"ICR-MMSE-Net", "UDNet", "Single-tap MMSE", "Full-matrix LMMSE"}
     for seed in seeds:
         root = folder/f"seed_{seed}"
         paths = [root/"evaluation", root/"fixed_csi"]
@@ -66,8 +66,8 @@ def verify_results(output, channel, config):
             actual = [row["mean_nmse_db"][0] for row in report["per_snr"]]
             if not np.allclose(actual, target_nmse_db(channel, report["snr_db"]), rtol=0, atol=1e-4):
                 raise RuntimeError("Formal evaluation used a different initial CSI NMSE")
-            if path == root/"evaluation" and not required.issubset(report["curves"]):
-                raise RuntimeError("Missing six-detector comparison")
+            if path == root/"evaluation" and set(report["curves"]) != required:
+                raise RuntimeError("Expected exactly the four-detector comparison")
 
 
 def main():

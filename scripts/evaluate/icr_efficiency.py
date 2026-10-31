@@ -1,4 +1,4 @@
-"""Benchmark six compensated-CSI detectors in six fresh, sequential processes."""
+"""Benchmark four compensated-CSI detectors in four fresh, sequential processes."""
 from __future__ import annotations
 
 import argparse

@@ -103,15 +103,13 @@ def test_independent_evaluation_and_inference_never_read_labels(experiment, monk
             batch = prepare_batch(ds, 0, [0], 0, backend)
             result = equalize_batch(batch, backend, model=model, preprocessor=prepared)
             assert result.symbols.shape == (1, len(ds._indices))
-    # All four independently validated baselines and shared NMSE are present.
-    report = evaluate(directory/"test.h5", best, root/"report", backend, cache_dir=root/"cache",
-                      algorithm_parameters={"ep": {"iterations": 2}, "robust_ep": {"iterations": 2}})
-    assert len(report["curves"]) == 5
+    # Both independently validated MMSE baselines and shared NMSE are present.
+    report = evaluate(directory/"test.h5", best, root/"report", backend, cache_dir=root/"cache")
+    assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE", "UDNet"}
     assert report["curves"]["UDNet"]["total_symbols"] == [report["bits_per_snr"]//2]*2
     for name in ("ber_snr.png", "nmse_snr.png", "ser_snr.png", "training_curves.png", "report.html"):
         assert (root/"report"/name).exists()
-    again = evaluate(directory/"test.h5", best, root/"again", backend, cache_dir=root/"cache",
-                     algorithm_parameters={"ep": {"iterations": 2}, "robust_ep": {"iterations": 2}})
+    again = evaluate(directory/"test.h5", best, root/"again", backend, cache_dir=root/"cache")
     assert all(curve["provenance"]["reused"] for curve in again["curves"].values())
     assert again["nmse"]["provenance"]["reused"]
     assert json.loads((root/"again/metrics.json").read_text(encoding="utf-8"))["complete"]

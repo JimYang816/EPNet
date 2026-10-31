@@ -1,4 +1,4 @@
-"""Independent five-algorithm report, validated baseline/NMSE cache reuse."""
+"""Independent three-algorithm report, validated baseline/NMSE cache reuse."""
 from __future__ import annotations
 
 import html
@@ -96,7 +96,7 @@ def _evaluate(dataset_path, checkpoint, run, backend, *, batch_size=8, window_ba
         if file_sha256(checkpoint) != checkpoint_sha:
             raise RuntimeError("Checkpoint changed during evaluation")
         report = dict(baseline)
-        report["schema"] = "udnet-independent-five-equalizers-v1"
+        report["schema"] = "udnet-independent-three-equalizers-v2"
         report["curves"] = dict(baseline["curves"], UDNet=dict(identifier="udnet", errors=bit_errors.tolist(),
             total_bits=[bits]*len(ds.snr_db), ber=(bit_errors/bits).tolist(),
             symbol_errors=symbol_errors.tolist(), total_symbols=[symbols]*len(ds.snr_db),
@@ -108,7 +108,7 @@ def _evaluate(dataset_path, checkpoint, run, backend, *, batch_size=8, window_ba
             training_scope=payload["training_scope"], paper_doi=payload["paper_doi"], commit=payload["commit"],
             selection="train/validation only; sum of 22 layer CEs per valid window label",
             validation_metrics=payload["history"][-1].get("validation_metrics"),
-            csi_nmse="shared input CSI metric for all five algorithms")
+            csi_nmse="shared input CSI metric for all three algorithms")
         history = json.loads((checkpoint.parent/"history.json").read_text(encoding="utf-8"))
         plot_report(report, history, run)
         write_json(run/"metrics.json", report)
@@ -180,14 +180,14 @@ def write_html(report, run):
     details = html.escape(json.dumps(report["udnet"], ensure_ascii=False, indent=2))
     body = f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>{report['channel']} UDNet</title>
 <style>body{{font:16px/1.7 system-ui;max-width:1150px;margin:32px auto;padding:0 20px;color:#182c3d}}img{{max-width:100%}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd5dc;padding:8px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f6f8;padding:16px}}</style>
-<h1>{report['channel']}：UDNet 与四基线</h1>
+<h1>{report['channel']}：UDNet 与两种 MMSE 基线</h1>
 <p>完整测试集每 SNR {report['frame_count']} 帧，D1/D2 共用模型，{report['bits_per_snr']:,} 比特。测试集不参与训练和选模。</p>
 <p>CSI 输入视图：{html.escape(report.get('input_view', 'compensated'))}；保留既有划分和 QPSK 映射。32 个连续物理复载波窗、步长 16、两侧各 8 点上下文；仅拼接中心数据槽。局部窗外 ICI 截断。单位噪声协方差白化后，Gram 与 matched 输入共同除以本窗有效数据列的平均能量，ZF 不变；不使用标签或测试集统计量。</p>
 <table><tr><th>BER</th>{headings}</tr>{rows}</table>
 <img src="ber_snr.png"><img src="nmse_snr.png"><img src="ser_snr.png"><img src="training_curves.png">
 <img src="validation_by_snr.png">
-<p>NMSE 是五算法共享的输入 CSI 指标：先对全部帧及 D1/D2 的线性 NMSE 求平均，再转 dB。空心倒三角表示零观测错误，显示于 0.5 / 测试总数；SER 的零错误也按此显示。</p>
-<p>四基线、Robust EP 训练协方差与 NMSE 均经现有内容和依赖指纹校验后复用或重算。来源和各部分缓存键见 metrics.json。</p>
+<p>NMSE 是三算法共享的输入 CSI 指标：先对全部帧及 D1/D2 的线性 NMSE 求平均，再转 dB。空心倒三角表示零观测错误，显示于 0.5 / 测试总数；SER 的零错误也按此显示。</p>
+<p>两种 MMSE 基线与 NMSE 均经现有内容和依赖指纹校验后复用或重算。来源和各部分缓存键见 metrics.json。</p>
 <pre>{details}</pre></html>'''
     (run/"report.html").write_text(body, encoding="utf-8")
 

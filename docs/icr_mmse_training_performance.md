@@ -22,6 +22,26 @@
 
 第一项包含完整参考矩阵的子空间外能量。NMSE 仍逐块除以完整参考矩阵能量，再平均线性 NMSE；画图时才转为 dB。
 
+## 补偿 CSI 的参考缓存
+
+补偿输入保持 `H_ref + alpha * (H_raw - H_ref)`，其中 `H_raw` 仍用原有双精度 DPSS 抽头展开和 FFT 重建。参考矩阵包含 DPSS 子空间以外的分量，不能直接投影成原 DPSS 系数而声称输入完全相同。
+
+`dense_device` 的补偿输入与监督现在共用同一个参考 LRU。保存的 `complex64` 参考值只缓存一份，送入设备后精确提升为 `complex128` 参与补偿，最后转换为模型精度；没有降低 FFT 或混合的计算精度。同一批参考仅执行一次 pinned-memory 复制及一次主机到设备传输。D1/D2 共用压缩 HDF5 chunk 时一次解压两块，每个缓存条目拥有独立存储，逐块淘汰仍遵守字节上限。缓存不足时正常逐块读取，不改变数据。
+
+这修复了补偿输入曾绕过监督缓存、跨 SNR 和 epoch 重复解压大矩阵的性能问题。完整流程的误差覆盖率准备也使用配置的设备重建和参考缓存。独立正式评测的 `dense` 推理计时入口保持原设置。
+
+以下入口对冻结的旧版管线与当前管线使用相同训练/验证记录：所有 SNR 的输入与监督要求逐元素一致，另核对 A/B/C 损失、梯度、完整 NMSE、硬判决以及连续 Adam 更新后的 BER。计时包含训练和验证；首次冷遍历单列，后续取中位数，不读取 test，不保留诊断训练权重。
+
+对照诊断单独启用 CUDA 确定性算法和对应 cuBLAS workspace。默认 CUDA 卷积反向中的浮点归约，即使旧版自身重复运行也会使连续 Adam 权重逐渐分离；不能据此把少量判决差异归因于缓存。确定性设置仅用于诊断，正式训练的运行设置保持原样。小样本计时需结合正式恢复后的完整 epoch 耗时判断。
+
+```bash
+.venv/bin/python -m scripts.evaluate.icr_compensated_cache \
+  --baseline-ref b8c275f --device cuda --frames 8 --repeats 2 \
+  --output outputs/runs/icr_mmse_compensated/_control/cache_equivalence.json
+```
+
+已有补偿训练检查点可在训练进程退出后，用 `scripts.run.icr_cache_upgrade --run ... --verified-report ...` 执行一次有记录的性能迁移，再按原配置 `--resume`。迁移必须验证报告通过、当前指纹一致、旧检查点仅两个缓存模块指纹不同，且 CSI 视图为 compensated、后端为 dense_device；模型、损失等其他源码改变时拒绝迁移。原检查点先完整备份，保留权重、优化器、随机状态、已完成轮次及数据/训练控制身份。常规续训仍执行完整身份校验。
+
 ## 测量入口
 
 在服务器项目目录使用已验证的当前结构检查点，例如：

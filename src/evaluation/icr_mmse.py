@@ -6,6 +6,7 @@ Reported CSI values average each full-matrix linear NMSE, then convert to dB.
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import ExitStack
 import ctypes
 import logging
 from pathlib import Path
@@ -134,7 +135,7 @@ def _initial_nmse(initial_channel, reference):
 
 
 def coverage(data_directory, run, *, bandwidths=(16,), batch_size=2, frame_limit=None,
-             device="cpu", precision="complex64"):
+             device="cpu", precision="complex64", operator_backend="dense", reference_cache_mib=512):
     """Measure local correction capacity on train/validation only, never test."""
     bandwidths = tuple(bandwidths)
     if not bandwidths or any(not isinstance(b, int) or isinstance(b, bool) or b < 0 for b in bandwidths):
@@ -147,12 +148,22 @@ def coverage(data_directory, run, *, bandwidths=(16,), batch_size=2, frame_limit
                   splits={})
     for split in ("train", "validation"):
         sums = defaultdict(lambda: np.zeros(len(bandwidths)+1))
-        with CompactDataset(directory/(split+".h5")) as dataset, torch.no_grad():
+        with ExitStack() as stack, torch.no_grad():
+            dataset = stack.enter_context(CompactDataset(directory/(split+".h5")))
             if dataset.split != split:
                 raise ValueError("Coverage requires train/validation split identities")
-            for inputs, keys in input_batches(dataset, device=device, batch_size=batch_size,
-                                              frame_limit=frame_limit, precision=precision):
-                target = supervision(dataset, keys, device=device, precision=precision)
+            if operator_backend == "dense_device":
+                from src.data.icr_training import ReferenceCache, training_batches
+                batches = stack.enter_context(training_batches(dataset, device=device, batch_size=batch_size,
+                    frame_limit=frame_limit, precision=precision, operator_backend=operator_backend,
+                    cache=ReferenceCache(reference_cache_mib*2**20), compact_reference=False))
+            elif operator_backend == "dense":
+                batches = ((inputs, supervision(dataset, keys, device=device, precision=precision), keys)
+                    for inputs, keys in input_batches(dataset, device=device, batch_size=batch_size,
+                        frame_limit=frame_limit, precision=precision))
+            else:
+                raise ValueError("Full-matrix coverage requires dense or dense_device")
+            for inputs, target, keys in batches:
                 error = (inputs["initial_channel"]-target["reference_channel"]).abs().square()
                 positions = inputs["carrier_positions"]
                 distance = (positions[:, None]-positions[None, :]).abs()
@@ -190,34 +201,6 @@ def _record_disjoint(dataset):
         with h5py.File(dataset.path.parent/(name+".h5"), "r") as other:
             if np.intersect1d(records, other["windows/record"][:]).size:
                 raise ValueError("Physical-record leakage between dataset splits")
-
-
-def paired_target(report, baseline):
-    """Paired compensated-view BER differences, resampling records rather than bits."""
-    robust = baseline["curves"]["Robust EP"]
-    with h5py.File(robust["provenance"]["cache_file"], "r") as cache:
-        errors = cache["bit_errors"][:]
-    with CompactDataset(report["dataset"], input_view="compensated") as dataset:
-        windows = dataset._h["samples/window_index"][:]
-        record_ids = dataset._h["windows/record"][:][windows]
-    rows = []
-    for si, scored in enumerate(report["per_snr"]):
-        if not 15 <= scored["snr_db"] <= 30:
-            continue
-        differences, bits = [], []
-        for value in scored["by_record"]:
-            baseline_errors = int(errors[si, record_ids == value["record"]].sum())
-            differences.append(value["bit_errors"][-1]-baseline_errors)
-            bits.append(value["bits"])
-        interval = record_interval(differences, bits)
-        rows.append(dict(snr_db=scored["snr_db"], ber_difference=interval,
-                         observed_no_worse=interval["estimate"] <= 0,
-                         upper_interval_no_worse=interval["upper"] is not None and interval["upper"] <= 0,
-                         csi_improved=scored["mean_nmse_linear"][-1] < scored["mean_nmse_linear"][0]))
-    return dict(reference="Robust EP with compensated CSI and train-only covariance", snr_range_db=[15, 30],
-                difference="ICR-MMSE-Net BER minus Robust EP BER; lower is better", per_snr=rows,
-                observed_target_met=bool(rows) and all(r["observed_no_worse"] and r["csi_improved"] for r in rows),
-                inference="Paired whole-record bootstrap; zero BER differences do not prove population equivalence")
 
 
 def evaluate(dataset_path, checkpoint, run, backend, *, batch_size=2, frame_limit=None,
@@ -336,7 +319,6 @@ def evaluate(dataset_path, checkpoint, run, backend, *, batch_size=2, frame_limi
             report["baselines"] = baseline
             report["comparison_precision"] = dict(icr_mmse=precision+"/"+real_precision,
                 traditional_baselines=baseline["numerical_environment"]["precision"])
-            report["research_target"] = paired_target(report, baseline)
             if udnet_checkpoint is not None:
                 from src.evaluation.udnet import evaluate as udnet_evaluate
                 udnet = udnet_evaluate(dataset_path, udnet_checkpoint, run/"udnet", backend,

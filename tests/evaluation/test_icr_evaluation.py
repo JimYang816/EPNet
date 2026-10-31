@@ -46,7 +46,7 @@ def test_selection_cannot_fall_through_to_test_when_csi_never_improves():
 
 
 @pytest.mark.parametrize("precision", ("complex64", "complex128"))
-def test_coverage_full_matrix_scoring_and_paired_raw_baseline(tmp_path, monkeypatch, precision):
+def test_coverage_full_matrix_scoring_and_compensated_mmse_baselines(tmp_path, monkeypatch, precision):
     import torch
     from threadpoolctl import threadpool_limits
     from data_generation.tests.test_compact import fixture
@@ -109,11 +109,18 @@ def test_coverage_full_matrix_scoring_and_paired_raw_baseline(tmp_path, monkeypa
                 for row in split["per_snr"]:
                     assert 0 <= row["fractions"][0] <= 1
                     assert row["fractions"][1] == pytest.approx(1.)
+            accelerated = scoring.coverage(directory, tmp_path/"coverage_fast", bandwidths=(0, 100),
+                batch_size=2, precision=precision, operator_backend="dense_device", reference_cache_mib=2)
+            for split in ("train", "validation"):
+                for before, after in zip(covered["splits"][split]["per_snr"],
+                                         accelerated["splits"][split]["per_snr"], strict=True):
+                    assert before["record_count"] == after["record_count"]
+                    np.testing.assert_allclose(before["fractions"], after["fractions"], rtol=2e-6, atol=1e-8)
+                    assert before["error_energy"] == pytest.approx(after["error_energy"], rel=2e-6)
             report = scoring.evaluate(directory/"test.h5", checkpoint, tmp_path/"evaluation", DenseBackend(),
                 batch_size=2, include_baselines=True, bootstrap_samples=16,
-                baseline_parameters={"ep":dict(iterations=2), "robust_ep":dict(iterations=2)},
                 cache_dir=tmp_path/"cache")
-            assert len(report["curves"]) == 5
+            assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE", "ICR-MMSE-Net"}
             assert report["input_view"] == "compensated"
             assert observed
             assert report["effective_model_config"]["precision"] == precision
@@ -126,7 +133,7 @@ def test_coverage_full_matrix_scoring_and_paired_raw_baseline(tmp_path, monkeypa
             assert report["performance"]["preprocessing_and_all_iterations_seconds"] > 0
             assert (tmp_path/"evaluation"/"ber_snr.png").exists()
             assert (tmp_path/"evaluation"/"nmse_snr.png").exists()
-            assert "research_target" in report
+            assert "research_target" not in report
             from src.evaluation.icr_selection import match_once_budget
             probe = match_once_budget(directory, checkpoint, DenseBackend(), repeats=(1, 2),
                                       frame_limit=1, timing_repeats=1)

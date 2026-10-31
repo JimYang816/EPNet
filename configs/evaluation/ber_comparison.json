@@ -8,16 +8,6 @@
   "batch_size": 8,
   "algorithms": {
     "single_tap_mmse": {},
-    "full_matrix_lmmse": {},
-    "ep": {
-      "iterations": 10,
-      "damping": 0.2,
-      "epsilon": 5e-7
-    },
-    "robust_ep": {
-      "iterations": 10,
-      "damping": 0.2,
-      "epsilon": 5e-7
-    }
+    "full_matrix_lmmse": {}
   }
 }

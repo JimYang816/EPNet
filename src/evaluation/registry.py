@@ -18,37 +18,24 @@ class Algorithm:
 
 MATRIX = ("src.algorithms.likelihood:make_whitener", "src.algorithms.likelihood:likelihood_batch",
           "src.algorithms.likelihood:batch_likelihood")
-REAL = ("src.algorithms.likelihood:backend_real_likelihood", "src.algorithms.likelihood:real_likelihood",
-        "src.algorithms.likelihood:batch_real_likelihood")
 ALGORITHMS = (
     Algorithm("single_tap_mmse", "Single-tap MMSE", "src.algorithms.MMSE.single_tap"),
     Algorithm("full_matrix_lmmse", "Full-matrix LMMSE", "src.algorithms.MMSE.full_matrix", MATRIX),
-    Algorithm("ep", "EP", "src.algorithms.ep.real", MATRIX+REAL),
-    Algorithm("robust_ep", "Robust EP", "src.algorithms.robust_ep.real", MATRIX+REAL),
 )
 CURVES = tuple(a.label for a in ALGORITHMS)
 IDENTIFIERS = tuple(a.identifier for a in ALGORITHMS)
 
 
-def resolve_parameters(algorithm_parameters=None, *, iterations=10, damping=.2, epsilon=5e-7):
+def resolve_parameters(algorithm_parameters=None):
     supplied = algorithm_parameters or {}
     if set(supplied)-set(IDENTIFIERS):
         raise ValueError(f"Unknown algorithms: {sorted(set(supplied)-set(IDENTIFIERS))}")
     result = {}
     for algorithm in ALGORITHMS:
-        ep = algorithm.identifier in ("ep", "robust_ep")
-        values = dict(iterations=iterations, damping=damping, epsilon=epsilon) if ep else {}
         override = supplied.get(algorithm.identifier, {})
-        if not isinstance(override, dict) or set(override)-set(values):
+        if not isinstance(override, dict) or override:
             raise ValueError(f"Invalid parameters for {algorithm.identifier}")
-        values.update(override)
-        if ep:
-            import math
-            if (not isinstance(values["iterations"], int) or isinstance(values["iterations"], bool)
-                    or values["iterations"] < 1 or not 0 < values["damping"] < 1
-                    or not math.isfinite(values["epsilon"]) or values["epsilon"] <= 0):
-                raise ValueError(f"Invalid parameters for {algorithm.identifier}")
-        result[algorithm.identifier] = values
+        result[algorithm.identifier] = {}
     return result
 
 

@@ -20,9 +20,7 @@
     "window_batch_size": 2000,
     "algorithm_parameters": {
       "single_tap_mmse": {},
-      "full_matrix_lmmse": {},
-      "ep": {"iterations": 10, "damping": 0.2, "epsilon": 0.0000005},
-      "robust_ep": {"iterations": 10, "damping": 0.2, "epsilon": 0.0000005}
+      "full_matrix_lmmse": {}
     }
   }
 }

@@ -144,7 +144,9 @@ def run_channel(data_directory, run, backend, config, *, resume=False, udnet_che
         raise ValueError("Final experiment requires a nonempty sequence of distinct integer random seeds")
     coverage(data_directory, run/"coverage", bandwidths=(model_config["bandwidth"],),
              batch_size=training.get("batch_size", 2), frame_limit=training.get("frame_limit"),
-             device=backend.device, precision=model_config["precision"])
+             device=backend.device, precision=model_config["precision"],
+             operator_backend=training.get("operator_backend", "dense"),
+             reference_cache_mib=training.get("reference_cache_mib", 512))
 
     def assess(candidate, weight, name):
         candidate_run = run/"selection"/name

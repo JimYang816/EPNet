@@ -1,4 +1,4 @@
-"""Run the four-equalizer BER comparison on complete compact-v2 test splits."""
+"""Run the two-MMSE BER comparison on complete compact-v2 test splits."""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--input-view", choices=("raw", "compensated"))
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "all"), default=[],
-                       help="Recompute these detectors; still publish all four curves")
+                       help="Recompute these detectors; still publish both MMSE curves")
     modes.add_argument("--plot-only", action="store_true", help="Redraw saved complete reports without data or GPU")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -43,8 +43,7 @@ def main():
             evaluate(dataset, Path(config["output"])/channel.lower(), backend,
                      batch_size=args.batch_size if args.batch_size is not None else config["batch_size"],
                      algorithm_parameters=config.get("algorithms"), force=args.force,
-                     cache_dir=config.get("cache_dir"), input_view=args.input_view or config.get("input_view", "compensated"),
-                     **config.get("ep", {}))
+                     cache_dir=config.get("cache_dir"), input_view=args.input_view or config.get("input_view", "compensated"))
 
 
 if __name__ == "__main__":
