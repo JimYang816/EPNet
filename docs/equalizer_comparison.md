@@ -39,6 +39,20 @@ python -m scripts.evaluate.compare --plot-only
 
 `--force` 只重算指定传统算法；`--force all` 同时刷新OAMP-Net2缓存。`--channel` 限定信道，`--plot-only` 不读取数据或初始化GPU，不能与 `--force` 同用。独立训练可使用较小的诊断对照，论文主比较使用上述六算法统一报告。
 
+从头训练当前 ICR 并自动衔接完整评测时，使用独立实验目录：
+
+```bash
+python -m scripts.run.icr_experiment --output outputs/runs/icr_full_<run_id> --device cuda --threads 4
+# 同一代码、配置与目录中断恢复
+python -m scripts.run.icr_experiment --output outputs/runs/icr_full_<run_id> --device cuda --threads 4 --resume
+```
+
+该入口依次完成两信道共享预训练、固定与联合分支、全参数学习审计、六算法完整测试及固定分支测试。
+六算法报告自动绑定本次联合权重；OAMP-Net2 和已有有效 UDNet 检查点复用，缺失的 UDNet 按正式配置训练。
+运行前核对完整数据划分、compensated CSI 及基线身份。`manifest.json` 保存代码和配置，
+`progress.json` 标记当前步骤、成功或失败，`logs/` 保存逐步日志；最终 `comparison/{nof1,ncs1}/`
+包含两类指标图和 HTML 报告，`results_digest.json` 汇总两信道实际误码率。旧实验目录不改写。
+
 论文正式消融采用 A–D 四组：固定 CSI + Full-matrix LMMSE、固定 CSI + MMSE Unfolding、迭代 CSI 修正 + Full-matrix LMMSE、迭代 CSI 修正 + MMSE Unfolding。它与六算法主比较分开汇总；定义、控制条件及已有结果的使用边界见 [ICR 说明第5节](icr_mmse.md#5-比较消融与输出)。单次修正、去不确定度、去门控和等预算单次修正保留为补充诊断。
 
 ## 缓存与效率
