@@ -1,6 +1,6 @@
 # OAMP-Net2、MMSE-PIC 与七算法统一评测
 
-本页同步 2026-10-30 的训练、评测配置和诊断入口。主对比为 Single-tap LMMSE、Full-matrix LMMSE、
+本页同步至 2026-10-31 的训练、评测配置及历史诊断使用边界。主对比为 Single-tap LMMSE、Full-matrix LMMSE、
 MMSE-DFE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net。MMSE-DFE 的计算与固定检测顺序见 [说明](mmse_dfe.md)。保持已验收数据文件、物理记录划分、
 compensated CSI、导频、接收观测、QPSK 映射及 BER 定义不变。
 NOF1 的输入平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB，SNR 0→30 dB。
@@ -117,13 +117,15 @@ OAMP 配置为 `configs/training/oamp_net2.json`，沿用现有两个数据集�
 `latest.pt` 支持续训；`best.pt` 只由验证损失严格改善更新。
 
 统一配置为 `configs/evaluation/ber_comparison.json`。其中 `checkpoints` 为每个信道的
-UDNet、OAMP-Net2、ICR-MMSE-Net 路径；默认 ICR 路径按现有 `seed_20261028` 流水线填写，
-应指向实际选定的正式检查点。统一入口在开始计算前校验全部所需检查点；
+UDNet、OAMP-Net2、ICR-MMSE-Net 路径；当前ICR和UDNet分别引用
+`outputs/runs/icr_full_20261031_095549/joint/<channel>/icr_mmse.pt` 和
+`outputs/runs/icr_full_20261031_095549/udnet/<channel>/best.pt`，其中 `<channel>` 为 `nof1` 或 `ncs1`。
+OAMP-Net2仍使用本页所述独立训练目录的 `best.pt`。统一入口在开始计算前校验全部所需检查点；
 缺失或身份不匹配会报错，不会跳过曲线或拿未训练模型替代。
 没有 `checkpoints` 的旧自定义配置仍保留原基线接口行为。
 统一评测默认 batch 8，四种传统方法的参数由 `algorithms` 提供；独立 ICR 流水线的 batch 2 不会覆盖此值。各入口的算法数量、强制重算和离线绘图规则见 [均衡评测与缓存](equalizer_comparison.md)。
 
-统一结果在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/{nof1,ncs1}/`，原有六算法结果保留：
+2026-10-31双信道七算法正式汇总已完成，统一结果在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/{nof1,ncs1}/`，原有六算法结果保留：
 `metrics.json`、`report.html`、七条 BER 曲线的 `ber_snr.png`、输入/修正 CSI 的 `nmse_snr.png`。
 各子评测保留详细来源。正式测试每个算法、每个 SNR 必须恰好评测 600 帧、D1/D2、
 512 个数据槽，即 1,228,800 比特；汇总会再次核对数据哈希、SNR、视图和比特总数。
@@ -131,7 +133,8 @@ UDNet、OAMP-Net2、ICR-MMSE-Net 路径；默认 ICR 路径按现有 `seed_20261
 两种 MMSE 的计算身份保持原样，加入 MMSE-PIC 不会让其有效缓存失效。
 MMSE-PIC 的参数、OAMP 的检查点 SHA256 和各自计算依赖进入结果缓存身份。
 OAMP 逐 SNR/帧/D 块缓存，可跨 batch 大小复用并校验损坏；`--force all` 同时刷新 OAMP。
-UDNet 保留已有缓存行为，ICR 保留已有完整重评行为。
+UDNet按数据、权重和实现身份复用逐块缓存；ICR按同样的实际身份复用完整报告缓存，
+可从当前检查点所属实验导入匹配的正式报告。`--force icr_mmse` 显式重算ICR，`--force all` 同时刷新传统算法、OAMP和ICR；具体边界见 [增量评测](incremental_evaluation.md)。
 离线绘图使用保存数值，不需要数据、检查点或 GPU。
 
 效率入口 `scripts.evaluate.icr_efficiency` 默认在七个独立新进程中测量七种方法，
@@ -139,63 +142,21 @@ UDNet 保留已有缓存行为，ICR 保留已有完整重评行为。
 MMSE-PIC 使用统一报告中的实际迭代参数。OAMP 的逐样本完整谱分解计入预处理时间，
 不复用训练谱特征或 BER 结果缓存；计时进程禁止读取测试标签。
 
-## 5. OAMP-Net2 数值核验与独立续训诊断
+## 5. 历史 OAMP-Net2 诊断的使用边界
 
-`scripts.evaluate.oamp_net2_diagnostics` 只使用已有训练、验证划分，从正式 `best.pt` 启动独立诊断，不读取 `test.h5`，不覆盖原检查点或测试报告。先核对高 SNR 验证样本的四组标量梯度与接收空间直接求逆参考；误差超过代码门槛即停止。随后记录原模型、未训练 OAMP 和传统方法的验证结果，并从同一原模型及 Adam 状态分别运行：
+2026-10-30的数值核验及独立续训诊断属于历史验证集分析，专用评测、绘图入口和对应诊断测试已在仓库整理时删除，不作为当前运行命令。已有结果按原目录 `outputs/runs/oamp_net2_diagnostics_20261030/{nof1,ncs1}/` 保留；复现时须使用相应历史源码快照或Git备份，备份位置见 [仓库整理记录](repository_maintenance.md)。
 
-| 试验目录 | 训练范围 | 默认追加 epoch | 学习率 | 选模依据 |
-|---|---|---:|---:|---|
-| `joint_lr1e-3` | 全部 SNR | 50 | `1e-3` | 完整验证集向量 MSE |
-| `joint_lr1e-4` | 全部 SNR | 50 | `1e-4` | 完整验证集向量 MSE |
-| `snr30_lr1e-4` | 最高 SNR，当前为30 dB | 100 | `1e-4` | 30 dB 验证向量 MSE |
-
-诊断默认 batch 64、随机种子20261030，保留原 Adam 动量；第1轮、每5轮和末轮验证，原检查点始终可作为第0轮候选。预算由 `--joint-epochs`、`--snr-epochs` 和 `--batch-size` 控制，与正式200 epoch、batch 8的训练配置分开。30 dB 分支是从联合 SNR 模型继续训练的单点诊断，不能称为每个 SNR 分别训练的完整模型组。
-
-```bash
-python -m scripts.evaluate.oamp_net2_diagnostics \
-  --data data/processed/nof1_compact_20261026_final \
-  --checkpoint outputs/runs/oamp_net2_compensated/nof1/best.pt \
-  --output outputs/runs/oamp_net2_diagnostics_20261030/nof1 \
-  --device cuda --threads 4 --joint-epochs 50 --snr-epochs 100 --batch-size 64
-```
-
-NCS1 使用 `data/processed/ncs1_compact_20261026_nmse` 和对应 `ncs1/best.pt`，输出到同一诊断根目录的 `ncs1/`。每次诊断须选择新目录，该入口没有 `--resume`。输出为 `diagnostics.json`，以及三项试验各自的 `controls.json`、`history.json`、`result.json` 和标记 `diagnostic_only` 的 `best.pt`。这些权重不具备正式检查点格式，不可填入统一评测配置；诊断特征保留在该目录的 `features/`，完成后可按实验清理规则删除可重建缓存。
-
-绘图入口 `scripts.visualize.oamp_net2_diagnostics` 从完成的报告读取数据，并要求根目录另有 `_control/validation_nmse.json`。该文件按信道保存 `snr_db` 和 `mean_nmse_db`，必须来自相同验证集的完整矩阵统计，不能用测试 NMSE 代替；诊断入口不自动生成它。两个信道均完成时，可在服务器项目根目录准备统计并画图：
-
-```bash
-python - <<'PY'
-import json
-from pathlib import Path
-from src.data import CompactDataset
-from src.evaluation.nmse import mean_nmse_db
-
-config = json.loads(Path('configs/training/oamp_net2.json').read_text(encoding='utf-8'))
-values = {}
-for channel, directory in config['datasets'].items():
-    with CompactDataset(Path(directory) / 'validation.h5', input_view='compensated') as dataset:
-        values[channel] = {
-            'snr_db': dataset.snr_db.tolist(),
-            'mean_nmse_db': [mean_nmse_db(dataset, si) for si in range(len(dataset.snr_db))],
-        }
-control = Path('outputs/runs/oamp_net2_diagnostics_20261030/_control')
-control.mkdir(parents=True, exist_ok=True)
-(control / 'validation_nmse.json').write_text(json.dumps(values, indent=2), encoding='utf-8')
-PY
-python -m scripts.visualize.oamp_net2_diagnostics --results outputs/runs/oamp_net2_diagnostics_20261030
-```
-
-可用 `--channel NOF1` 或 `--channel NCS1` 限定绘图。每信道生成验证集 `ber_snr.png`、共享输入 CSI 的 `nmse_snr.png` 和30 dB续训过程 `fine_tuning.png`。绘图只读取上述 JSON，不访问数据集、检查点或 GPU；30 dB 专项模型在 BER 图中只显示该点。诊断结果不构成新的测试集性能结论。
+该诊断仅使用训练、验证划分，包含全SNR低学习率续训及30 dB单点续训，不构成新的测试集结论。标记 `diagnostic_only` 的权重不能填入正式统一评测配置。当前训练、恢复和独立评测使用第4节仍存在的入口，正式结果始终引用所选检查点对应的全量测试报告。
 
 ## 6. 验证
 
 ```bash
-python -m pytest tests/algorithms/test_additional_equalizers.py tests/training/test_oamp_net2_training.py tests/training/test_oamp_net2_diagnostics.py -q
+python -m pytest tests/algorithms/test_additional_equalizers.py tests/algorithms/test_mmse_dfe.py tests/training/test_oamp_net2_training.py tests/evaluation/test_incremental_comparison.py -q
 ```
 
 算法测试以独立的接收空间直接求逆为参考，比较 MMSE-PIC 多轮结果以及 OAMP-Net2
 每层输出，覆盖有色噪声、矩形系统、四组标量梯度、秩亏、零信道、接收增益不变性，
 并在 CPU 上核对 PyTorch 与 NumPy 路径。
 集成测试覆盖固定划分、训练不访问测试、精确续训、raw/小样本检查点拒绝、标签访问拦截、
-特征损坏重建、两种 MMSE 缓存保持、PIC 参数身份、完整六算法计数与离线重画。
+特征损坏重建、两种 MMSE 缓存保持、DFE/PIC 参数身份、完整七算法计数与离线重画。
 这些小规模 CPU 测试验证实现与链路，不提供正式数据集上的性能结论。

@@ -38,16 +38,18 @@ python -m scripts.train.icr_mmse --channel NCS1 --stage joint --device cuda
 
 本地仅运行CPU小样本验证；完整训练仍在服务器进行。性能测量入口为 `scripts.evaluate.icr_training_perf`，它会解析对应信道的实际模型设置，计时和缓存参数由自己的CLI控制。
 
-## 3. 已验收检查点和预算复核
+## 3. 当前正式检查点与历史预算复核
 
-当前正式推理权重如下，六算法配置已指向这两个联合模型：
+当前正式训练已在 `outputs/runs/icr_full_20261031_095549/` 完成，两信道均包含共同预训练、固定CSI分支和联合分支，`progress.json` 标记 `completed`。当前七算法配置引用下表的联合模型，UDNet也使用该实验的独立训练权重：
 
 | 信道 | 固定CSI | 完整模型 |
 |---|---|---|
-| NOF1 | `icr_budgeted_unified_20261031/fixed_final/nof1/icr_mmse.pt` | `icr_budgeted_unified_20261031/joint_training/nof1/icr_mmse.pt` |
-| NCS1 | `icr_budgeted_20261031/fixed_final/ncs1/icr_mmse.pt` | `icr_budgeted_20261031/joint_training/ncs1/icr_mmse.pt` |
+| NOF1 | `icr_full_20261031_095549/fixed/nof1/icr_mmse.pt` | `icr_full_20261031_095549/joint/nof1/icr_mmse.pt` |
+| NCS1 | `icr_full_20261031_095549/fixed/ncs1/icr_mmse.pt` | `icr_full_20261031_095549/joint/ncs1/icr_mmse.pt` |
 
-路径均相对 `outputs/runs/`。旧文件位置保持不变，历史训练记录与权重摘要一同保留。推理通过 `prepare_frozen_inference` 缓存固定参数变换和窗口几何，数值等价检查覆盖真实验证输入；不修改推理公式或保存新的训练权重。
+路径均相对 `outputs/runs/`。共同预训练位于该实验的 `warmup/<channel>/warmup.pt`，正式主比较结果见第4节，等深度A–D结果见第5节。推理通过 `prepare_frozen_inference` 缓存固定参数变换和窗口几何；数值等价检查不修改推理公式或训练权重。
+
+历史预算修复使用 `icr_budgeted_unified_20261031` 的NOF1权重和 `icr_budgeted_20261031` 的NCS1权重，固定/联合分支目录为 `fixed_final`、`joint_training`。这些检查点、训练记录与权重摘要继续保留，详细数值见 [算法设计第3.8节](icr_mmse_algorithm_design.md#38-历史全参数预算修复的冻结结果)。以下命令仅复核该历史实验：
 
 ```bash
 # 读取既有四组冻结报告，生成BER/NMSE与逐层图
@@ -57,19 +59,19 @@ python -m scripts.run.icr_budgeted_study --split validation --device cuda --resu
 python -m scripts.run.icr_budgeted_study --split test --device cuda --resume
 ```
 
-四组平均BER均优于历史和同修正器权重LMMSE，实测总耗时不超过原Unfolding预算。全部展开层及CSI修正计入稳态耗时，一次性加载/准备单列。历史NOF1为22层、新版8层，NCS1均8层，因此这批预算修复结果不替代相同深度的正式A–D消融。
+该历史复核的四组平均BER均优于历史和同修正器权重LMMSE，实测总耗时不超过原Unfolding预算。全部展开层及CSI修正计入稳态耗时，一次性加载/准备单列。历史NOF1为22层、修复版8层，NCS1均8层，因此这批预算修复结果不替代相同深度的正式A–D消融，也不是当前正式权重的耗时实测。
 
-NOF1固定CSI相对未训练初始化没有显著学习收益，部分0 dB点仍差于LMMSE，联合CSI NMSE也未全面改善。单种子、物理记录配对区间不能证明训练随机性稳定或神经校准的独立贡献。完整负面结果和区间保存在冻结报告中。
+该历史复核中，NOF1固定CSI相对未训练初始化没有显著学习收益，部分0 dB点仍差于LMMSE，联合CSI NMSE也未全面改善。单种子、物理记录配对区间不能证明训练随机性稳定或神经校准的独立贡献。完整负面结果和区间保存在历史冻结报告中。
 
-## 4. 六算法主比较
+## 4. 七算法主比较
 
-比较 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和当前 ICR-MMSE-Net，配置为 `configs/evaluation/ber_comparison.json`。新汇总写到 `outputs/runs/equalizer_comparison_unified_20261031/`，运行方法见 [统一评测](equalizer_comparison.md)。
+比较 Single-tap LMMSE、Full-matrix LMMSE、MMSE-DFE、MMSE-PIC、UDNet、OAMP-Net2 和当前 ICR-MMSE-Net，配置为 `configs/evaluation/ber_comparison.json`。2026-10-31双信道正式汇总已完成，默认结果为 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/{nof1,ncs1}/`，运行方法见 [统一评测](equalizer_comparison.md)。
 
 ```bash
 python -m scripts.evaluate.compare --device cuda --threads 4
 ```
 
-更新检查点配置不会使旧报告自动变成新报告；需要正式重评后才能引用新六算法表。此次配置与仓库同步不自动重新启动大规模计算。
+七算法报告在既有六算法正式结果上新增MMSE-DFE，原六条曲线和输入/修正CSI NMSE的数值保持一致，核验记录见实验根目录的 `verification.json`。既有六算法完整结果仍位于 `icr_full_20261031_095549/comparison/`。后续更新检查点时，必须重新校验计算身份并完成所需评测，才能引用新结果。
 
 ## 5. 比较、消融与输出
 
@@ -96,8 +98,40 @@ python -m scripts.run.icr_ablation --trained-root outputs/runs/icr_full_20261031
 
 输出包含 `progress.json`、冻结权重清单、检测器学习审计、每信道/划分/组别的逐层指标、A–D汇总JSON/CSV、BER/NMSE对比图、四项物理记录配对BER差异区间及可传回本地的 `reports.zip`。失败时进度记录异常，既有检查点和历史实验均保留。
 
+当前正式A–D实验 `outputs/runs/icr_ad_current_20261031_133445/` 已完成两信道的验证集和全量测试，根目录 `progress.json` 标记 `completed`。B/D复用第3节的固定/联合检查点，C单独训练；冻结权重和实际参数学习记录分别见 `frozen_checkpoints.json`、`detector_learning_audit.json`。每信道测试覆盖7个SNR、8,400个D块，每SNR为1,228,800比特。下表平均BER为7个SNR的算术平均，数值来自 `results_digest.json`：
+
+| 信道 | 组别 | 平均BER | 30 dB BER | 30 dB CSI NMSE / dB |
+|---|---|---:|---:|---:|
+| NOF1 | A | 0.04411807 | 0.00444661 | −18.3000 |
+| NOF1 | B | 0.04327765 | 0.00326904 | −18.3000 |
+| NOF1 | C | 0.04176851 | 0.00251302 | −20.8804 |
+| NOF1 | D | 0.04086403 | 0.00164632 | −20.8493 |
+| NCS1 | A | 0.06927525 | 0.02085612 | −10.6700 |
+| NCS1 | B | 0.06623024 | 0.01541829 | −10.6700 |
+| NCS1 | C | 0.05469180 | 0.00918620 | −15.1969 |
+| NCS1 | D | 0.05196987 | 0.00641846 | −14.3630 |
+
+各信道的 `test/<channel>/comparison.json`、`comparison.csv` 保存完整逐SNR数值及四项配对区间，同目录包含BER/NMSE图；验证结果在对应 `validation/` 目录。D的测试平均BER最低，但30 dB的CSI NMSE仍弱于C，不能表述为所有指标均改善。该结果仍为单训练种子，配对区间反映物理记录间差异，不代表多种子稳定性。
+
+A–D内部统一使用冻结配置的 `complex64` 和对角噪声权重；七算法主比较中的传统Full-matrix LMMSE使用完整热噪声协方差及双精度。两类报告须分别引用，不能跨表替换A或D的误码计数。
+
 每次完整评测至少生成BER–SNR、平均完整矩阵NMSE–SNR，保留实际误码数、逐层结果、数据/代码/权重摘要、计时及物理记录配对统计。预算复核保留的 `legacy_20261030.py` 与 `legacy_lmmse_20261030.py` 是原推理快照，不能删除或当成活动训练模型。
 
 ## 6. 验证与运行
 
 本地CPU验证覆盖新配置解析、两分支共享预训练、分组学习率、逐层参数学习审计及推理等价性。服务器按 `main` 同步代码后读取原数据和检查点。Git只保存代码、配置、测试与文档；数据、训练权重、旧结果和论文产物留在各自输出目录。
+
+正式效率入口默认对七种算法分别启动独立进程。以NOF1为例，必须使用与比较报告匹配的数据和三个正式检查点：
+
+```bash
+python -m scripts.evaluate.icr_efficiency \
+  --dataset data/processed/nof1_compact_20261026_final/test.h5 \
+  --comparison-report outputs/runs/equalizer_comparison_mmse_dfe_20261031/nof1/metrics.json \
+  --checkpoint outputs/runs/icr_full_20261031_095549/joint/nof1/icr_mmse.pt \
+  --udnet-checkpoint outputs/runs/icr_full_20261031_095549/udnet/nof1/best.pt \
+  --oamp-net2-checkpoint outputs/runs/oamp_net2_compensated/nof1/best.pt \
+  --output outputs/runs/icr_efficiency_<run_id>/nof1.json \
+  --device cuda --batch-size 2 --threads 4
+```
+
+NCS1使用 `data/processed/ncs1_compact_20261026_nmse/test.h5`，其余信道路径切换为 `ncs1`。初始化、稳态耗时、参数量及峰值内存按实际报告引用；第3节的历史预算表或缓存内原始耗时不能替代当前七算法的独立效率测量。

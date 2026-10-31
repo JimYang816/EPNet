@@ -69,7 +69,7 @@ s_(m+1) = [Re(E_constellation[p_m]), Im(E_constellation[p_m])]
 
 默认配置 `configs/training/udnet.json` 固定 Adam、学习率 0.001、种子 20261027、最多 200 epoch；验证损失严格改善才更新最佳模型，连续 20 轮未改善即早停。每轮用独立的、可恢复的随机生成器对本信道**所有 SNR、D1/D2 和训练帧的全部窗口**统一洗牌。测试集文件不在训练阶段打开，也不参与身份计算或模型选择。
 
-训练 `batch_size=null` 表示由资源探测选择窗口批大小；`frame_batch_size=8` 控制特征准备的帧批次。独立评测为 `batch_size=8`、`window_batch_size=2000`。ICR 主流水线内嵌的 UDNet 配置另用种子 20261028，检查点位于该流水线的信道目录下；统一六算法配置默认引用本页独立训练目录的 `best.pt`。
+训练 `batch_size=null` 表示由资源探测选择窗口批大小；`frame_batch_size=8` 控制特征准备的帧批次。独立评测为 `batch_size=8`、`window_batch_size=2000`。ICR 主流水线内嵌的 UDNet 配置另用种子 20261028；当前七算法配置引用已完成的完整实验权重 `outputs/runs/icr_full_20261031_095549/udnet/<channel>/best.pt`，其中 `<channel>` 为 `nof1` 或 `ncs1`。本页独立训练入口仍默认输出到 `outputs/runs/udnet_compensated/`，该默认输出不等于主比较当前选用的权重。
 
 每轮在完整验证窗口上记录分 SNR 的逐层交叉熵、最后一层交叉熵和中心输出 BER。第 1 轮、每 10 轮以及训练结束时，从训练缓存均匀选取至多 256 个固定窗口，记录每层 Tanh 的饱和比例（激活前绝对值大于 3）、平均导数和隐藏层权重梯度范数；探测不更新参数、优化器、梯度缓冲或随机状态。
 
@@ -117,7 +117,7 @@ python -m scripts.infer.udnet --checkpoint outputs/runs/udnet_compensated/nof1/b
 python -m scripts.run.udnet --device cuda --threads 4
 ```
 
-充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。统一入口 `python -m scripts.evaluate.compare --device cuda` 按当前配置汇总 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net 六种算法；添加 `--baselines-only` 运行三种传统方法。所需检查点与缓存控制见 [均衡算法对比](equalizer_comparison.md)。本页独立评测仍按 `configs/training/udnet.json` 输出下述三算法结果。
+充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。统一入口 `python -m scripts.evaluate.compare --device cuda` 按当前配置汇总 Single-tap LMMSE、Full-matrix LMMSE、MMSE-DFE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net 七种算法；添加 `--baselines-only` 运行四种传统方法。双信道七算法正式结果已保存在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/`，所需检查点与缓存控制见 [均衡算法对比](equalizer_comparison.md)。本页独立评测仍按 `configs/training/udnet.json` 输出下述三算法结果。
 
 独立评测调用相同输入视图下的两种 MMSE 基线评测器，由该评测器重新校验数据、输入构造、算法、评分、环境及 NMSE 依赖，检查每个缓存块的校验和；不再运行 EP、Robust EP 或读取其训练协方差。仅视图及依赖匹配的部分复用，不根据旧报告中的曲线直接认定缓存可用。UDNet 结果单独按输入视图、最佳模型 SHA256、输入/模型/评分代码和测试数据身份缓存，检查点也须通过输入视图校验。正式评测强制完整测试集全部 SNR、600 帧、D1/D2 和 512 数据槽，每 SNR 每算法 1,228,800 比特、UDNet 614,400 符号。
 
