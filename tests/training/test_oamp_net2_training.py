@@ -144,7 +144,7 @@ def test_pic_addition_and_parameter_change_preserve_existing_mmse_caches(experim
         resolve_parameters({"mmse_pic": {"unknown": 1}})
 
 
-def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
+def test_unified_seven_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
     from src.algorithms.icr_mmse.checkpoint import SCHEMA, FEEDBACK_LAYOUT, INFERENCE_CODE, atomic_save, cpu_state
     from src.algorithms.icr_mmse.model import ICRMMSEnet
     from src.training.udnet import train as train_udnet
@@ -164,7 +164,7 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment,
             data_indices=dataset._indices.tolist(), snr_db=dataset.snr_db.tolist()))
     checkpoints = dict(udnet=udnet, oamp_net2=oamp, icr_mmse=icr)
     report = unified(directory/"test.h5", root/"unified", backend, checkpoints=checkpoints,
-        batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_pic": {"iterations": 3}}, bootstrap_samples=16)
+        batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 3}}, bootstrap_samples=16)
     assert tuple(report["curves"]) == ORDER
     assert all(curve["total_bits"] == [64, 64] for curve in report["curves"].values())
     assert report["input_view"] == "compensated"
@@ -176,9 +176,9 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment,
         scope.setattr("src.evaluation.udnet.equalize_batch", lambda *a, **kw: pytest.fail("Unchanged UDNet recomputed"))
         scope.setattr("src.evaluation.oamp_net2.equalize_batch", lambda *a, **kw: pytest.fail("Unchanged OAMP recomputed"))
         changed = unified(directory/"test.h5", root/"pic-only-change", backend, checkpoints=checkpoints,
-            batch_size=1, cache_dir=root/"cache", algorithm_parameters={"mmse_pic": {"iterations": 4}}, bootstrap_samples=16)
+            batch_size=1, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 4}}, bootstrap_samples=16)
     assert changed["icr_mmse"]["evaluation_cache"]["reused"]
-    for name in ("Single-tap LMMSE", "Full-matrix LMMSE", "UDNet", "OAMP-Net2"):
+    for name in ("Single-tap LMMSE", "Full-matrix LMMSE", "MMSE-DFE", "UDNet", "OAMP-Net2"):
         assert changed["curves"][name]["provenance"]["reused"]
         assert changed["curves"][name]["errors"] == report["curves"][name]["errors"]
     assert changed["curves"]["MMSE-PIC"]["provenance"]["cache_key"] != report["curves"]["MMSE-PIC"]["provenance"]["cache_key"]
@@ -190,12 +190,12 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment,
         oamp_net2_checkpoint=oamp, batch_size=2, frame_limit=1, threads=2, output=root/"efficiency.json")
     rows = efficiency["algorithms"]
     assert {row["algorithm"] for row in rows} == set(AVAILABLE_IDENTIFIERS)
-    assert len({row["process_id"] for row in rows}) == 6
+    assert len({row["process_id"] for row in rows}) == 7
     assert all(row["blocks"] == 4 for row in rows) and not efficiency["test_labels_read"]
     assert all(row["setup_seconds"] > 0 and row["reconstruction_and_all_iterations_seconds"] > 0
                and row["peak_process_rss_bytes"] > 0 for row in rows)
-    assert all(row["parameters"] == 0 for row in rows[:3])
-    assert all(row["parameters"] > 0 for row in rows[3:])
+    assert all(row["parameters"] == 0 for row in rows[:4])
+    assert all(row["parameters"] > 0 for row in rows[4:])
     assert efficiency["reference_assisted_csi_construction"]
     assert efficiency["initial_provenance_validation_seconds"] > 0
     assert "train.h5" not in efficiency["data_identity"]

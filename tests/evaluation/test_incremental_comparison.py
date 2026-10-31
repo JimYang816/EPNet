@@ -104,6 +104,53 @@ def test_comparison_needs_neither_retired_detectors_nor_training_data(experiment
     assert not (experiment.root/"cache/covariance").exists()
 
 
+def test_dfe_addition_reuses_existing_detectors_and_supports_selective_force(experiment, monkeypatch):
+    original = experiment.run(algorithm_parameters={"mmse_pic": {"iterations": 2}})
+    calls = watch(monkeypatch)
+    extended = experiment.run("with-dfe", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 2}})
+    assert not changed(calls)
+    assert extended["curves"]["MMSE-DFE"]["total_bits"] == [64]*7
+    for name, curve in original["curves"].items():
+        assert extended["curves"][name]["provenance"]["reused"]
+        assert extended["curves"][name]["provenance"]["cache_key"] == curve["provenance"]["cache_key"]
+        assert extended["curves"][name]["errors"] == curve["errors"]
+    forced = experiment.run("force-dfe", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 2}},
+                            force=["mmse_dfe"])
+    assert not changed(calls)
+    assert forced["curves"]["MMSE-PIC"]["provenance"]["reused"]
+    assert not forced["curves"]["MMSE-DFE"]["provenance"]["reused"]
+    with monkeypatch.context() as scope:
+        scope.setattr(comparison, "prepare_batch", forbid)
+        cached = experiment.run("dfe-cached", batch_size=1,
+                                algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 2}})
+    assert cached["curves"]["MMSE-DFE"]["provenance"]["reused"]
+    with pytest.raises(ValueError, match="Invalid parameters"):
+        resolve_parameters({"mmse_dfe": {"iterations": 10}})
+    with pytest.raises(ValueError, match="compensated CSI"):
+        experiment.run("raw-dfe", algorithm_parameters={"mmse_dfe": {}}, input_view="raw")
+
+
+def test_ber_figure_draws_all_seven_curves_with_stable_styles(tmp_path, monkeypatch):
+    from matplotlib.figure import Figure
+    from src.evaluation.comparison_plots import plot_ber
+    from src.evaluation.registry import SUPPORTED_CURVES
+    captured = []
+
+    def capture(figure, *args, **kwargs):
+        captured.append({line.get_label(): (line.get_color(), line.get_marker()) for line in figure.axes[0].lines})
+
+    monkeypatch.setattr(Figure, "savefig", capture)
+    report = dict(channel="NOF1", snr_db=[0, 5], frame_count=600, bits_per_snr=1228800,
+                  curves={name: dict(ber=[.1, .01], total_bits=[1228800]*2) for name in SUPPORTED_CURVES})
+    plot_ber(report, tmp_path/"seven.png")
+    assert tuple(captured[-1]) == SUPPORTED_CURVES
+    assert len(set(captured[-1].values())) == 7
+    styles = captured[-1]
+    report["curves"] = {name: report["curves"][name] for name in reversed(SUPPORTED_CURVES) if name != "MMSE-DFE"}
+    plot_ber(report, tmp_path/"historical.png")
+    assert captured[-1] == {name: styles[name] for name in report["curves"]}
+
+
 @pytest.mark.parametrize("identifier", [a.identifier for a in ALGORITHMS])
 def test_independent_source_edits_invalidate_only_the_owner(experiment, monkeypatch, identifier):
     experiment.run()

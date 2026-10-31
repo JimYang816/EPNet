@@ -19,13 +19,14 @@ from src.evaluation.result_cache import FileLock
 
 def plot_ber(report, path):
     report = normalize_report_labels(report)
-    colors = ("#667085", "#2477b3", "#8b5cf6", "#df8028", "#15845b", "#b42a55")
-    markers = ("o", "s", "P", "^", "D", "*")
+    colors = ("#667085", "#2477b3", "#0097a7", "#8b5cf6", "#df8028", "#15845b", "#b42a55")
+    markers = ("o", "s", "X", "P", "^", "D", "*")
+    styles = dict(zip(SUPPORTED_CURVES, zip(colors, markers)))
     with plt.rc_context({"font.size": 11, "axes.spines.top": False, "axes.spines.right": False}):
         fig, ax = plt.subplots(figsize=(7.5, 5.2))
         zero_seen = False
-        for name, color, marker in zip(report["curves"], colors, markers):
-            values = report["curves"][name]
+        for name, values in report["curves"].items():
+            color, marker = styles[name]
             ber, bits = np.array(values["ber"]), np.array(values["total_bits"])
             ax.semilogy(report["snr_db"], np.where(ber > 0, ber, np.nan), color=color,
                         marker=marker, markersize=6, linewidth=1.8, label=name)

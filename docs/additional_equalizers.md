@@ -1,7 +1,7 @@
-# OAMP-Net2、MMSE-PIC 与六算法统一评测
+# OAMP-Net2、MMSE-PIC 与七算法统一评测
 
 本页同步 2026-10-30 的训练、评测配置和诊断入口。主对比为 Single-tap LMMSE、Full-matrix LMMSE、
-MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net。保持已验收数据文件、物理记录划分、
+MMSE-DFE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net。MMSE-DFE 的计算与固定检测顺序见 [说明](mmse_dfe.md)。保持已验收数据文件、物理记录划分、
 compensated CSI、导频、接收观测、QPSK 映射及 BER 定义不变。
 NOF1 的输入平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB，SNR 0→30 dB。
 
@@ -103,10 +103,10 @@ python -m scripts.evaluate.oamp_net2 --channel NOF1 --device cuda
 # 本地已有数据时的小样本 CPU 检查；单独输出，不能用作正式检查点
 python -m scripts.train.oamp_net2 --channel NOF1 --device cpu --max-frames 2 --epochs 1 --batch-size 2 --output outputs/runs/oamp_net2_smoke
 
-# 无需任何学习检查点，运行三种传统方法
+# 无需任何学习检查点，运行四种传统方法
 python -m scripts.evaluate.compare --device cuda --baselines-only
 
-# 六算法统一评测
+# 七算法统一评测
 python -m scripts.evaluate.compare --device cuda --threads 4
 python -m scripts.evaluate.compare --channel NCS1 --device cuda --force mmse_pic
 python -m scripts.evaluate.compare --plot-only
@@ -121,10 +121,10 @@ UDNet、OAMP-Net2、ICR-MMSE-Net 路径；默认 ICR 路径按现有 `seed_20261
 应指向实际选定的正式检查点。统一入口在开始计算前校验全部所需检查点；
 缺失或身份不匹配会报错，不会跳过曲线或拿未训练模型替代。
 没有 `checkpoints` 的旧自定义配置仍保留原基线接口行为。
-统一评测默认 batch 8，三种传统方法的参数由 `algorithms` 提供；独立 ICR 流水线的 batch 2 不会覆盖此值。各入口的算法数量、强制重算和离线绘图规则见 [均衡评测与缓存](equalizer_comparison.md)。
+统一评测默认 batch 8，四种传统方法的参数由 `algorithms` 提供；独立 ICR 流水线的 batch 2 不会覆盖此值。各入口的算法数量、强制重算和离线绘图规则见 [均衡评测与缓存](equalizer_comparison.md)。
 
-统一结果在 `outputs/runs/equalizer_comparison_compensated/{nof1,ncs1}/`：
-`metrics.json`、`report.html`、六条 BER 曲线的 `ber_snr.png`、输入/修正 CSI 的 `nmse_snr.png`。
+统一结果在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/{nof1,ncs1}/`，原有六算法结果保留：
+`metrics.json`、`report.html`、七条 BER 曲线的 `ber_snr.png`、输入/修正 CSI 的 `nmse_snr.png`。
 各子评测保留详细来源。正式测试每个算法、每个 SNR 必须恰好评测 600 帧、D1/D2、
 512 个数据槽，即 1,228,800 比特；汇总会再次核对数据哈希、SNR、视图和比特总数。
 
@@ -134,7 +134,7 @@ OAMP 逐 SNR/帧/D 块缓存，可跨 batch 大小复用并校验损坏；`--for
 UDNet 保留已有缓存行为，ICR 保留已有完整重评行为。
 离线绘图使用保存数值，不需要数据、检查点或 GPU。
 
-效率入口 `scripts.evaluate.icr_efficiency` 默认在六个独立新进程中测量六种方法，
+效率入口 `scripts.evaluate.icr_efficiency` 默认在七个独立新进程中测量七种方法，
 必须提供 `--checkpoint`、`--udnet-checkpoint` 和 `--oamp-net2-checkpoint`。
 MMSE-PIC 使用统一报告中的实际迭代参数。OAMP 的逐样本完整谱分解计入预处理时间，
 不复用训练谱特征或 BER 结果缓存；计时进程禁止读取测试标签。

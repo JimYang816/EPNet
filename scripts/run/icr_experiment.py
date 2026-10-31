@@ -1,4 +1,4 @@
-"""Train the current ICR branches, then publish complete six-equalizer reports.
+"""Train the current ICR branches, then publish complete seven-equalizer reports.
 
 Run under nohup on the server. Each phase has its own process/log; progress.json
 records failures as well as completion. Existing experiments are never replaced.
@@ -69,7 +69,7 @@ def validate_report(report, channel):
     if (not report.get("complete") or report.get("smoke") or report.get("input_view") != "compensated"
             or report.get("channel") != channel or report.get("snr_db") != SNR
             or set(report.get("curves", {})) != set(LABELS)):
-        raise ValueError(f"{channel}: incomplete six-algorithm report")
+        raise ValueError(f"{channel}: incomplete seven-algorithm report")
     for curve in report["curves"].values():
         if curve["total_bits"] != [1228800]*7 or len(curve["ber"]) != 7:
             raise ValueError(f"{channel}: incomplete test bit coverage")

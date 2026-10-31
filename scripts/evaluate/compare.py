@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
-    parser.add_argument("--baselines-only", action="store_true", help="Run MMSE baselines and MMSE-PIC without learned checkpoints")
+    parser.add_argument("--baselines-only", action="store_true", help="Run configured traditional equalizers without learned checkpoints")
     parser.add_argument("--input-view", choices=("raw", "compensated"))
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "icr_mmse", "all"), default=[],

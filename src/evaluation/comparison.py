@@ -61,6 +61,8 @@ def evaluate(dataset_path, run, backend, *, batch_size=8,
     algorithms = selected_algorithms(parameters)
     if "mmse_pic" in parameters and input_view != "compensated":
         raise ValueError("MMSE-PIC comparison requires compensated CSI")
+    if "mmse_dfe" in parameters and input_view != "compensated":
+        raise ValueError("MMSE-DFE comparison requires compensated CSI")
     forced = resolve_force(force)
     run, cache = Path(run), Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE
     run.mkdir(parents=True, exist_ok=True)

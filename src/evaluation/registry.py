@@ -23,8 +23,9 @@ ALGORITHMS = (
     Algorithm("full_matrix_lmmse", "Full-matrix LMMSE", "src.algorithms.MMSE.full_matrix", MATRIX),
 )
 # Keep the original defaults for callers producing the historical two-MMSE
-# report. The unified experiment explicitly opts into the new comparator.
+# report. The unified experiment explicitly opts into the additional comparators.
 OPTIONAL_ALGORITHMS = (
+    Algorithm("mmse_dfe", "MMSE-DFE", "src.algorithms.mmse_dfe.detector", MATRIX),
     Algorithm("mmse_pic", "MMSE-PIC", "src.algorithms.mmse_pic.detector", MATRIX),
 )
 AVAILABLE_ALGORITHMS = ALGORITHMS+OPTIONAL_ALGORITHMS

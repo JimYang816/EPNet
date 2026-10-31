@@ -80,7 +80,7 @@ def _worker(options):
             if identifier == "udnet":
                 preprocessor = LocalPreprocessor(WindowPlan.build(dataset._config["nfft"], dataset._indices),
                                                  covariance, device)
-        if identifier in ("full_matrix_lmmse", "mmse_pic", "oamp_net2"):
+        if identifier in ("full_matrix_lmmse", "mmse_dfe", "mmse_pic", "oamp_net2"):
             from src.algorithms.likelihood import make_whitener
             thermal = make_whitener(covariance, backend)
         algorithm = next((a for a in AVAILABLE_ALGORITHMS if a.identifier == identifier), None)
