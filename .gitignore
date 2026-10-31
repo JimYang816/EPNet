@@ -11,6 +11,8 @@ htmlcov/
 build/
 dist/
 .ipynb_checkpoints/
+/tmp/
+/torchinductor_*/
 
 # Local environments
 .venv/

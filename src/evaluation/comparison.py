@@ -36,7 +36,7 @@ def test_batch(dataset, si, frames, d, backend):
 def _covariance(ds, cache, data_identity, environment, origin, backend, batch_size):
     data = data_identity.files
     identity = dict(schema="train-covariance-v1", data={name: data[name] for name in ("train.h5", "model.h5")},
-                    alpha=ds._h["compensation/alpha"][:].tolist(), snr_db=ds.snr_db.tolist(),
+                    input_view=ds.input_view, snr_db=ds.snr_db.tolist(),
                     code=fp.source_fingerprint(fp.MODEL_CODE+("src.common.numerics", "src.evaluation.covariance",
                                                               "data_generation.src.transmitter.ofdm:qpsk")),
                     environment=environment)
@@ -56,7 +56,7 @@ def _covariance(ds, cache, data_identity, environment, origin, backend, batch_si
 
 def _nmse(ds, cache, data_identity, environment, origin):
     data = data_identity.files
-    identity = dict(schema="test-full-csi-linear-mean-nmse-v1",
+    identity = dict(schema="test-full-csi-linear-mean-nmse-v1", input_view=ds.input_view,
                     data={name: data[name] for name in ("test.h5", "model.h5")},
                     code=fp.source_fingerprint(fp.MODEL_CODE+("src.evaluation.nmse",
                         "data_generation.src.dataset.compact_math:coefficient_nmse",
@@ -75,7 +75,7 @@ def _nmse(ds, cache, data_identity, environment, origin):
 
 
 def evaluate(dataset_path, run, backend, *, batch_size=8, iterations=10, damping=.2, epsilon=5e-7,
-             algorithm_parameters=None, force=(), cache_dir=None):
+             algorithm_parameters=None, force=(), cache_dir=None, input_view="compensated"):
     if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
         raise ValueError("Batch size must be a positive integer")
     parameters = resolve_parameters(algorithm_parameters, iterations=iterations, damping=damping, epsilon=epsilon)
@@ -83,7 +83,7 @@ def evaluate(dataset_path, run, backend, *, batch_size=8, iterations=10, damping
     run, cache = Path(run), Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE
     run.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    with CompactDataset(dataset_path) as ds:
+    with CompactDataset(dataset_path, input_view=input_view) as ds:
         if ds.split != "test":
             raise ValueError("BER comparison requires the test split")
         nsnr, count, ndata = len(ds.snr_db), ds.frame_count, len(ds._indices)
@@ -101,7 +101,7 @@ def evaluate(dataset_path, run, backend, *, batch_size=8, iterations=10, damping
             entries = {}
             shape = (nsnr, count, 2)
             for algorithm in ALGORITHMS:
-                scientific_identity = dict(schema=SCHEMA, algorithm=algorithm.identifier,
+                scientific_identity = dict(schema=SCHEMA, algorithm=algorithm.identifier, input_view=ds.input_view,
                     data={name: identity.files[name] for name in ("test.h5", "model.h5")},
                     parameters=parameters[algorithm.identifier],
                     code=fp.source_fingerprint(fp.INPUT_CODE+fp.SCORING_CODE+(algorithm.module,)+algorithm.helpers),
@@ -170,7 +170,7 @@ def evaluate(dataset_path, run, backend, *, batch_size=8, iterations=10, damping
             frame_count=count, bits_per_snr=bits, data_blocks_per_snr=count*2, curves=report_curves,
             parameters=parameters, dataset=str(Path(dataset_path).resolve()), data_identity=identity.files,
             nmse=nmse, report_generation=origin, numerical_environment=environment,
-            csi="existing compact-v2 constructed CSI",
+            input_view=ds.input_view, csi="raw receiver CSI" if ds.input_view == "raw" else "accepted compensated CSI",
             robust_covariance=dict(source="train only", frames=train_count, shrinkage=shrinkage.tolist(),
                 method="gain-normalized residual second moment, diagonal shrinkage",
                 model_residual_included=True, test_labels_used=False, provenance=covariance_source),

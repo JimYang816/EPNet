@@ -9,6 +9,7 @@ from scipy import linalg
 from threadpoolctl import threadpool_limits
 
 from data_generation.src.pdd import load_pdd_config, identities
+from data_generation.src.dataset.compact_protocol import physical_identities
 from data_generation.src.receiver.dpss import DPSSModel, build_model
 from data_generation.src.receiver.estimation import FrozenPrior, input_windows
 from data_generation.src.receiver.pdd import JointEstimator, selected_components, selected_time_covariance
@@ -44,11 +45,12 @@ def test_pdd_mapping_dual_d_and_test_schedule():
     np.testing.assert_array_equal(f.known[1:3, m["data"]], 0)
     np.testing.assert_array_equal(make_frame(c, 9, 26).known, f.known)
     assert not np.array_equal(f.bits[0], f.bits[1])
-    ids = identities(c, "test")
-    assert len(ids) == 25 and len(set(ids)) == 25
-    assert [s for r, s in ids if r == 1] == [2, 14, 26]
-    assert [s for r, s in ids if r == 2] == [8, 20]
-    assert 25*2*512*2 == 51200
+    ids = physical_identities(c, "test")
+    assert len(ids) == len(set(ids)) == 150
+    assert [s for r, s in ids if r == 11] == list(range(2, 31, 2))
+    assert not {r for r, _ in ids} & set(c["learning_dataset"]["records"]["train"])
+    with pytest.raises(ValueError, match="Learning splits"):
+        identities(c, "test")
     model = build_model(c)
     assert model.count == 34 and model.length == 736 and model.basis.shape[0] == 5632
     np.testing.assert_allclose(model.basis.T@model.basis, np.eye(model.count), atol=1e-12)

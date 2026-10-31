@@ -1,14 +1,14 @@
-# UDNet 实现与补偿数据适配
+# UDNet 实现与原始 CSI 数据适配
 
 ## 依据与范围
 
 依据 Hao Zhao 等《Model-Driven Based Deep Unfolding Equalizer for Underwater Acoustic OFDM Communications》，IEEE TVT 72(5), 2023，DOI `10.1109/TVT.2022.3230143`，式（13）—（15）、图 5 和滑动结构实现。核对的本地论文为 `D:/SCI/paper/EPNet/UDNet.pdf`，SHA256 为 `fdd19460d502fe01f4be8abf8cd45199e99f64a42d62c9601e69fe5beb252eee`。
 
-本实现采用用户确认的补全约定：NOF1、NCS1 各训练一个模型，联合本信道全部 SNR，D1/D2 共用参数。论文中的固定 25 dB 训练和原始星座编号不照搬；本项目使用下述既定数据、200 epoch 上限、20 轮早停和既有比特映射。README、EPNet 实现、四基线注册表和统一比较入口不修改。
+本实现采用用户确认的补全约定：NOF1、NCS1 各训练一个模型，联合本信道全部 SNR，D1/D2 共用参数。论文中的固定 25 dB 训练和原始星座编号不照搬；本项目使用下述既定数据、200 epoch 上限、20 轮早停和既有比特映射。当前主实验默认 compensated CSI，NOF1 平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB。UDNet 在该固定视图重新训练，不复用 raw 检查点。联合修正方案见 [ICR-MMSE-Net](icr_mmse.md)。
 
 ## 物理窗口与输入
 
-`src/data/udnet.py` 完成无标签预处理，调用现有 `src/evaluation/inputs.py:prepare_batch` 重建既有补偿 CSI 与接收观测，并在**完整频率范围**先消除所有已知导频的估计贡献。原始文件、补偿系数、划分、CSI 和观测不改写，不再增加补偿或不确定性膨胀。
+`src/data/udnet.py` 完成无标签预处理，调用 `src/evaluation/inputs.py:prepare_batch` 按已保存 alpha 重建完整 `H_comp` 与接收观测，并在**完整频率范围**先消除所有已知导频的估计贡献。补偿构造只按已保存的参考 CSI 和 alpha 形成模型输入，不向网络单独提供参考 CSI、alpha 或标签。原始文件、补偿系数、划分和观测不改写。训练、评测及推理 CLI 默认采用 `input_view="compensated"`；raw 视图仅供显式诊断。
 
 在 FFT 的物理位置上，以中心块起点 `0,16,32,...` 构造窗口 `起点-8 ... 起点+23`，共 32 个连续复载波。仅保留中心 16 个位置中至少含一个数据槽的窗口。FFT 边界采用零填充，不循环绕回；边界之外的协方差填单位阵且与真实行无互相关。正式数据的边缘保护带已覆盖此上下文。
 
@@ -71,9 +71,9 @@ s_(m+1) = [Re(E_constellation[p_m]), Im(E_constellation[p_m])]
 
 每轮在完整验证窗口上记录分 SNR 的逐层交叉熵、最后一层交叉熵和中心输出 BER。第 1 轮、每 10 轮以及训练结束时，从训练缓存均匀选取至多 256 个固定窗口，记录每层 Tanh 的饱和比例（激活前绝对值大于 3）、平均导数和隐藏层权重梯度范数；探测不更新参数、优化器、梯度缓冲或随机状态。
 
-2026-10-27 的输入归一化修复将检查点及特征缓存版本升级为 v2。旧版输入在 NOF1 上的 Gram 可达百万量级，使 Tanh 饱和；NCS1 的信道统计量则约为万分之一量级。新输入对 H、y 的共同接收增益缩放保持不变。归一化只作用于 UDNet 派生特征，不改写已验收的数据、划分或基线。旧检查点不允许用于新版预处理，须从头训练；新默认目录为 `outputs/runs/udnet_normalized_20261027`，旧实验目录保留供结果对比。
+2026-10-27 的输入归一化修复将检查点及特征缓存版本升级为 v2。此前补偿视图的未归一化输入在 NOF1 上的 Gram 可达百万量级，使 Tanh 饱和；NCS1 的信道统计量则约为万分之一量级。归一化对 H、y 的共同接收增益缩放保持不变，只作用于 UDNet 派生特征，不改写已验收的数据与划分。当前 compensated 主实验仍使用该归一化方法，但按 `H_comp` 重新生成全部特征及训练统计。旧预处理或不同输入视图的检查点不得混用，须重新训练；默认目录为 `outputs/runs/udnet_compensated`。历史补偿视图产物已从活动目录清理，可从服务器或本地清理备份读取。
 
-正式训练 525 帧、验证 75 帧，每个信道共 411,600 个训练窗口和 58,800 个验证窗口。一次性缓存 `gram/matched/zf/data_mask/labels` 为独立 NPY 文件，避免反复重建信道及求伪逆。特征键绑定原始数据 SHA256、预处理参数、实现及依赖代码指纹、计算设备、物理窗口和可选 smoke 帧上限；各缓存文件也有 SHA256，损坏或依赖变化则重建。训练缓存约 7 GB，验证约 1 GB，逐信道加载主存；测试数据流式处理，不缓存局部特征。
+正式训练 525 帧、验证 75 帧，每个信道共 411,600 个训练窗口和 58,800 个验证窗口。一次性缓存 `gram/matched/zf/data_mask/labels` 为独立 NPY 文件，避免反复重建信道及求伪逆。特征键绑定输入视图、原始数据 SHA256、预处理参数、实现及依赖代码指纹、计算设备、物理窗口和可选 smoke 帧上限；各缓存文件也有 SHA256，损坏或依赖变化则重建。训练缓存约 7 GB，验证约 1 GB，逐信道加载主存；测试数据流式处理，不缓存局部特征。
 
 GPU 使用真实训练窗口，按 2000、1024、512、256 顺序测试全部候选。每个候选用模型副本进行两次完整 Adam 预热，再测一次前向、损失、反向及更新，计入优化器状态。取峰值保留显存不超过预检可用显存 80% 的最大候选。探测不修改正式模型或随机状态；`resource_probe.json` 保存空闲/总显存、预算、每个候选实测峰值及耗时和最终选择。正式运行省略 `--batch-size`，显式覆盖仅供本地 smoke 使用。FP32 网络关闭 CUDA TF32。
 
@@ -103,21 +103,21 @@ python -m scripts.train.udnet --channel NOF1 --device cuda --resume
 python -m scripts.evaluate.udnet --channel NOF1 --device cuda
 
 # 从现有数据执行无标签推理，输出物理数据槽的硬判决
-python -m scripts.infer.udnet --checkpoint outputs/runs/udnet_normalized_20261027/nof1/best.pt \
+python -m scripts.infer.udnet --checkpoint outputs/runs/udnet_compensated/nof1/best.pt \
   --dataset data/processed/nof1_compact_20261026_final/test.h5 \
   --snr 10 --frames 0,1 --d 1 --device cuda --output outputs/runs/udnet_inference.npz
 
 # 也可输入无标签充分统计量，输出逐层概率和最终类别
-python -m scripts.infer.udnet --checkpoint outputs/runs/udnet_normalized_20261027/nof1/best.pt \
+python -m scripts.infer.udnet --checkpoint outputs/runs/udnet_compensated/nof1/best.pt \
   --features inputs.npz --output outputs/runs/udnet_probabilities.npz
 
 # 正式完整流程：NOF1 训练和评测完成后，再进行 NCS1
 python -m scripts.run.udnet --device cuda --threads 4
 ```
 
-充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。现有 `python -m scripts.evaluate.compare` 和 EPNet 的独立入口继续按原方式工作。
+充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。四种传统基线通过 `python -m scripts.evaluate.compare` 运行；包含UDNet与ICR-MMSE-Net的完整比较见 [联合修正方案](icr_mmse.md)。
 
-独立评测调用现有四基线评测器，由该评测器重新校验数据、输入构造、算法、Robust EP 训练协方差、评分、环境及 NMSE 依赖，检查每个缓存块的校验和。仅依赖匹配的部分复用，不根据旧报告中的曲线直接认定缓存可用。UDNet 结果单独按最佳模型 SHA256、输入/模型/评分代码和测试数据身份缓存。正式评测强制完整测试集全部 SNR、600 帧、D1/D2 和 512 数据槽，每 SNR 每算法 1,228,800 比特、UDNet 614,400 符号。
+独立评测调用相同输入视图下的四基线评测器，由该评测器重新校验数据、输入构造、算法、Robust EP 训练协方差、评分、环境及 NMSE 依赖，检查每个缓存块的校验和。compensated 视图的 Robust EP 训练统计使用 `clean_observations-H_comp*x`。仅视图及依赖匹配的部分复用，不根据旧报告中的曲线直接认定缓存可用。UDNet 结果单独按输入视图、最佳模型 SHA256、输入/模型/评分代码和测试数据身份缓存，检查点也须通过输入视图校验。正式评测强制完整测试集全部 SNR、600 帧、D1/D2 和 512 数据槽，每 SNR 每算法 1,228,800 比特、UDNet 614,400 符号。
 
 每信道 `evaluation/` 输出 `metrics.json`、`report.html`、五算法 `ber_snr.png`、共享输入 CSI `nmse_snr.png`、UDNet `ser_snr.png`、`training_curves.png` 和分 SNR 验证过程图 `validation_by_snr.png`。NMSE 定义与现有比较完全相同：各帧各 D 的全矩阵线性相对平方误差先平均，再转 dB；它是各算法共享的输入质量指标。图中零错误按 0.5/总数显示并说明。
 

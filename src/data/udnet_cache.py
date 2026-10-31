@@ -50,7 +50,7 @@ def build_features(dataset, root, backend, data_identity, *, frame_batch_size=8,
         raise ValueError("Invalid feature batching controls")
     plan = WindowPlan.build(dataset._config["nfft"], dataset._indices)
     count = min(dataset.frame_count, frame_limit) if frame_limit is not None else dataset.frame_count
-    identity = dict(schema="udnet-features-v2", split=dataset.split,
+    identity = dict(schema="udnet-features-v2", split=dataset.split, input_view=dataset.input_view,
                     data={name: data_identity.files[name] for name in (dataset.split+".h5", "model.h5")},
                     preprocessing=PREPROCESSING, code=source_fingerprint(CACHE_CODE), frame_limit=frame_limit,
                     device=backend.device, positions=plan.positions.tolist())

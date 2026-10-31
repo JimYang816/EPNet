@@ -64,6 +64,8 @@ def load_model(path, device="cpu"):
 
 
 def validate_dataset(payload, dataset):
+    if payload.get("input_view", "compensated") != dataset.input_view:
+        raise ValueError("UDNet checkpoint CSI input view mismatch; retrain on the selected view")
     if (payload["channel"] != dataset.channel or payload["model_identity"] != dataset._h.attrs["model_identity"]
             or payload["data_schema"] != dataset._h.attrs["schema"]
             or payload["data_indices"] != dataset._indices.tolist()

@@ -7,7 +7,8 @@ import pytest
 from scipy.io import savemat
 
 from data_generation.src.config import ROOT
-from data_generation.src.pdd import identities, load_pdd_config
+from data_generation.src.pdd import load_pdd_config
+from data_generation.src.dataset.compact_protocol import physical_identities
 from data_generation.src.channel.watermark import WatermarkArchive
 
 
@@ -17,7 +18,7 @@ def test_nof1_changes_only_channel_configuration():
     nof1 = load_pdd_config(ROOT/"configs/data/nof1_pddp.json")
     assert nof1.pop("channel") == "NOF1"
     assert nof1 == original
-    assert len(identities(nof1, "test"))*2 == 50
+    assert len(physical_identities(nof1, "test"))*2 == 300
 
 
 @pytest.mark.parametrize("channel,taps", [("NCS1", 510), ("NOF1", 2048)])

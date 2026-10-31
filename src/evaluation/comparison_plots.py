@@ -37,7 +37,8 @@ def plot_ber(report, path):
         ax.grid(True, which="major", alpha=.28)
         ax.grid(True, which="minor", alpha=.12)
         ax.legend(loc="best", framealpha=.95)
-        caption = f'{report["frame_count"]:,} frames / SNR  |  {report["bits_per_snr"]:,} bits / SNR  |  Existing constructed CSI'
+        view = report.get("input_view", "compensated")
+        caption = f'{report["frame_count"]:,} frames / SNR  |  {report["bits_per_snr"]:,} bits / SNR  |  CSI view: {view}'
         if zero_seen:
             caption += "\nOpen triangles: zero observed errors, plotted at 0.5 / tested bits."
         fig.text(.5, .025, caption, ha="center", fontsize=8.5, color="#475467")

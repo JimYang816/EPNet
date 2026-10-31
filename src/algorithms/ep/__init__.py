@@ -1,4 +1,3 @@
-from .block import ep
-from .system import EqualizerSystem
+from .real import paper_ep
 
-__all__ = ["ep", "EqualizerSystem"]
+__all__ = ["paper_ep"]

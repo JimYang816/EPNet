@@ -3,7 +3,8 @@
     "NOF1": "data/processed/nof1_compact_20261026_final/test.h5",
     "NCS1": "data/processed/ncs1_compact_20261026_nmse/test.h5"
   },
-  "output": "outputs/runs/equalizer_comparison_20261026",
+  "output": "outputs/runs/equalizer_comparison_compensated",
+  "input_view": "compensated",
   "batch_size": 8,
   "algorithms": {
     "single_tap_mmse": {},

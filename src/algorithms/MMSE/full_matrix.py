@@ -7,12 +7,6 @@ from src.algorithms.interface import EqualizerResult
 from src.algorithms.likelihood import batch_likelihood
 
 
-def lmmse(system, observation, noise_variance):
-    gram, matched = system.likelihood(observation, noise_variance)
-    b = system.backend
-    return b.numpy(b.solve(gram+b.array(np.eye(system.dimension, dtype=complex)), matched))
-
-
 def equalize_batch(batch, backend, *, whitener, **parameters):
     if parameters:
         raise ValueError(f"Unknown full-matrix parameters: {sorted(parameters)}")

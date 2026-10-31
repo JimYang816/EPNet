@@ -4,7 +4,7 @@
 
 ## 划分与协议
 
-新协议为 `watermark-pddp-compact-v2`；旧 `ncs1-pddp-full-csi-v1` 数据与旧均衡评测保持隔离。两份 `configs/data/*_pddp.json` 除信道名外相同。新增 `learning_dataset` 是本轮学习数据的唯一划分来源；根层 `prior_records`、`validation_records` 和 `starts_seconds` 仍仅用于原有 CSI 先验及估计器校验。根层旧 `test_records`、奇偶窗口字段仅保留给历史 v1 库代码和回归测试，新入口不使用。
+当前协议为 `watermark-pddp-compact-v2`，旧版全CSI导出、读取与均衡流程已移除。两份 `configs/data/*_pddp.json` 除信道名外相同，沿用已验收版本。`learning_dataset` 是学习数据的唯一划分来源；根层 `prior_records`、`validation_records` 和 `starts_seconds` 用于CSI先验及估计器校验。旧 `test_records`、奇偶窗口和旧EP字段作为原始配置来源记录保留，当前入口不使用；保留这些字段维持数据配置身份。
 
 - 先验：051–055；CSI估计器校验：056–060，窗口沿用2/8/14/20/26秒。后者不是学习验证集。
 - 学习测试：011/015/019/023/027/031/035/039/043/047；学习验证：013/021/029/037/045。
@@ -27,7 +27,7 @@
 
 `alpha=sqrt(10**(m/10)/mean(raw_nmse))`；`H_comp=H_ref+alpha*(H_raw-H_ref)`。
 
-这是明确标记的参考辅助数据构造，alpha不根据BER调节。物理观测、参考CSI、标签、标准热噪声和RF噪声方差均保持不变，生成阶段保存其哈希供补偿后复核。所有默认派生输入均从当前补偿CSI即时重建，避免遗留旧的导频消除结果。
+这是明确标记的参考辅助数据构造，alpha不根据BER调节。物理观测、参考CSI、标签、标准热噪声和RF噪声方差均保持不变，生成阶段保存其哈希供补偿后复核。当前主实验默认 `input_view="compensated"`，按 `H_comp` 即时重建派生输入。用户固定本节 NOF1/NCS1 目标，不得自行切换到 raw 视图。数据与既定划分继续使用已验收版本。
 
 协方差只称为**接收机模型代理**。共享文件保存块结构先验P及估计器已有的白化观测谱(lambda,G)，原始系数代理为：
 
@@ -59,20 +59,20 @@ split文件按物理窗口保存一份完整D1/D2参考频域CSI（complex64，�
 ```python
 from src.data import CompactDataset, data_system
 
-with CompactDataset('data/processed/nof1_RUN/test.h5') as dataset:
+with CompactDataset('data/processed/nof1_compact_20261026_final/test.h5',
+                    input_view='compensated') as dataset:
     inputs, labels = dataset[0]   # SNR-major；每个item是一帧，显式D1/D2轴
     # inputs: observations[4,N], csi[2,N,N], noise, known[4,N],
-    #         masks, data_indices, pilot_indices, uncertainty
+    #         masks, data_indices, pilot_indices, carrier_positions
     # labels: bits[2,512,2], symbols[2,512], classes[2,512], constellation及其比特映射
     y_data, H_data = data_system(inputs)
     # y_data = y_D - H_comp @ known_D; H_data = H_comp[..., data_indices]
-    proxy = inputs['uncertainty']['coefficient_covariance']
-    product = proxy.matmul(coefficient_vector)
-    values, modes = proxy.modes(count=8)  # 示例；生成阶段不固定模式数
     audit = dataset.audit(0, 0)           # 仅显式监督/核查时使用
 ```
 
-默认视图不返回参考CSI、原始估计/系数、alpha、真实NMSE或真实误差。`audit`显式提供这些字段和身份/种子/物理残差。`model_input(si,fi)`与`labels(fi)`也可分别调用。不确定性接口同时给出D1/D2采样DPSS基、系数形状与q优先/延迟次之的展开顺序，供调用方把任意系数模式准确变换为CSI模式。每个worker自行打开读取器，协方差接口只在读取器打开时有效。v1读取器拒绝v2；v2读取器拒绝v1、未完成数据和共享模型身份不匹配的数据。
+默认 compensated 视图通过 `csi` 返回完整已验收估计 `H_comp`。raw 字段保留，仅供显式诊断。`model_input(si,fi)` 与 `labels(fi)` 可分别调用；无标签推理单独读取前者，`audit` 仅供显式监督/核查，提供参考CSI、原始系数、补偿量、身份/种子及物理残差。
+
+默认 `input_view="compensated"` 另提供 `inputs['uncertainty']['coefficient_covariance']`，支持 `matmul()` 与 `modes(count=...)`。该不确定性接口同时给出D1/D2采样DPSS基、系数形状与q优先/延迟次之的展开顺序，供调用方把任意系数模式准确变换为CSI模式。每个worker自行打开读取器，协方差接口只在读取器打开时有效。compact-v2读取器拒绝其他协议、未完成数据和共享模型身份不匹配的数据。当前训练与比较设置见 [ICR-MMSE-Net](icr_mmse.md) 和 [均衡算法对比](equalizer_comparison.md)。
 
 ## 运行与断点
 

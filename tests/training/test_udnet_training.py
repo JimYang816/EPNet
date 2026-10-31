@@ -59,6 +59,7 @@ def test_training_resume_is_exact_and_rejects_changed_identity(experiment):
     assert [h["validation_metrics"] for h in a["history"]] == [h["validation_metrics"] for h in b["history"]]
     assert a["history"][0]["training_health"]["zero_gradient_layers"] == []
     assert a["preprocessing"]["power_normalization"] == "per_window_mean_active_gram_diagonal"
+    assert a["input_view"] == a["identity"]["controls"]["input_view"] == "compensated"
     # Old, unnormalized checkpoints must never enter normalized inference.
     legacy = dict(a, preprocessing={k: v for k, v in a["preprocessing"].items() if k != "power_normalization"})
     torch.save(legacy, root/"legacy.pt")
@@ -76,6 +77,7 @@ def test_training_resume_is_exact_and_rejects_changed_identity(experiment):
     with CompactDataset(directory/"train.h5") as ds:
         guard = DataIdentity({name: directory/name for name in ("train.h5", "model.h5")})
         cache = build_features(ds, root/"resumed/features", backend, guard, frame_limit=2)
+        assert cache.manifest["identity"]["input_view"] == "compensated"
         assert cache.arrays["matched"].flat[0] != value.flat[0]
     with h5py.File(directory/"train.h5", "r+") as file:
         file["samples/standard_noise"][0, 0, 0] += .01

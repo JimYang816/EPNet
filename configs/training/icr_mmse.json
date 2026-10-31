@@ -1,0 +1,62 @@
+{
+  "datasets": {
+    "NOF1": "data/processed/nof1_compact_20261026_final",
+    "NCS1": "data/processed/ncs1_compact_20261026_nmse"
+  },
+  "output": "outputs/runs/icr_mmse_compensated",
+  "input_view": "compensated",
+  "model": {
+    "precision": "complex64",
+    "noise_mode": "diagonal",
+    "layers": 8,
+    "bandwidth": 16,
+    "correction_mode": "iterative",
+    "use_uncertainty": true,
+    "use_gate": true,
+    "equalizer_repeats": 1,
+    "window_size": 32,
+    "center_size": 16
+  },
+  "training": {
+    "stage_epochs": [10, 10, 10],
+    "lambda_h": 0.1,
+    "batch_size": 8,
+    "learning_rate": 0.001,
+    "seed": 20261028,
+    "operator_backend": "dense_device",
+    "prefetch_batches": 2,
+    "reference_cache_mib": 12288
+  },
+  "selection": {
+    "enabled": true,
+    "lambda_h": [0.01, 0.1, 1.0],
+    "layers": [4, 8, 12, 22],
+    "seeds": [20261028]
+  },
+  "evaluation": {
+    "batch_size": 2,
+    "bootstrap_samples": 2000,
+    "include_baselines": true
+  },
+  "udnet_checkpoints": {},
+  "udnet": {
+    "model": {"layers": 22, "window_size": 32, "hidden_size": 48},
+    "training": {
+      "epochs": 200,
+      "patience": 20,
+      "learning_rate": 0.001,
+      "seed": 20261028,
+      "batch_size": null,
+      "frame_batch_size": 8
+    },
+    "keep_feature_cache": false
+  },
+  "ablations": ["once", "no_uncertainty", "no_gate", "once_budget_matched"],
+  "budget_match": {
+    "repeats": [1, 2, 3, 4, 6, 8],
+    "tolerance": 0.1,
+    "batch_size": 2,
+    "frame_limit": 4,
+    "timing_repeats": 3
+  }
+}

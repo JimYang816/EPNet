@@ -19,7 +19,7 @@ from threadpoolctl import threadpool_info
 from src.common.experiment import file_sha256
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL_CODE = ("src.data.compact:CompactDataset", "data_generation.src.receiver.dpss:DPSSModel",
+MODEL_CODE = ("src.data.contract", "src.data.compact:CompactDataset", "data_generation.src.receiver.dpss:DPSSModel",
               "data_generation.src.pdd:SYMBOL_COUNT")
 INPUT_CODE = MODEL_CODE+("src.evaluation.inputs", "src.algorithms.interface", "src.common.numerics")
 SCORING_CODE = ("src.evaluation.scoring", "data_generation.src.transmitter.ofdm:decisions")

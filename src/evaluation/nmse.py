@@ -14,7 +14,8 @@ def manifest_values(dataset, files):
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
         values = np.array(report["splits"]["test"]["mean_nmse_db"], dtype=float)
-        if (report.get("complete") and report["protocol"] == SCHEMA
+        if (report.get("input_view", "compensated") == dataset.input_view
+                and report.get("complete") and report["protocol"] == SCHEMA
                 and report["channel"] == dataset.channel
                 and report["config_hash"] == dataset._h.attrs["config_hash"]
                 and report["splits"]["test"]["checked_frames"] == dataset.frame_count
@@ -36,7 +37,8 @@ def mean_nmse_db(dataset, si):
         coefficients = h["samples/raw_coefficients"][si, frames]
         reference = h["windows/reference_csi"][int(wi)]
         values = coefficient_nmse(dataset._model, coefficients, reference)
-        total += float(values.sum())*float(h["compensation/alpha"][si])**2
+        scale = float(h["compensation/alpha"][si])**2 if dataset.input_view == "compensated" else 1.0
+        total += float(values.sum())*scale
     mean = total/(dataset.frame_count*2)
     return float(10*np.log10(max(mean, np.finfo(float).tiny)))
 

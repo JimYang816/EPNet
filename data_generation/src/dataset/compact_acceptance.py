@@ -51,7 +51,9 @@ def accept(directory, run, c, *, plots=True, hash_files=True):
         noise_gain = np.trace(shared["unit_rf_noise_covariance"][:]).real/c["nfft"]
         for split in SPLITS:
             LOG.info("Disk acceptance %s %s", c["channel"], split)
-            with CompactDataset(directory/f"{split}.h5") as ds:
+            # Dataset acceptance audits the persisted historical compensation;
+            # experiment readers choose their own (default raw) CSI view.
+            with CompactDataset(directory/f"{split}.h5", input_view="compensated") as ds:
                 h, model = ds._h, ds._model
                 if h.attrs["config_hash"] != digest(c):
                     raise ValueError("Acceptance configuration mismatch")
@@ -197,7 +199,7 @@ def plot_report(directory, run, c, report):
     fig.savefig(run/"nmse_snr.png", dpi=160)
     plt.close(fig)
     figures = ["nmse_snr.png"]
-    with CompactDataset(Path(directory)/"test.h5") as ds:
+    with CompactDataset(Path(directory)/"test.h5", input_view="compensated") as ds:
         for si, snr in enumerate(c["snr_db"]):
             audit = ds.audit(si, 0)
             fields = (audit["reference_csi"], audit["compensated_csi"], audit["true_error"])

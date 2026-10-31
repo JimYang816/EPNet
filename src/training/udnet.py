@@ -111,7 +111,7 @@ def run_epoch(model, cache, device, batch_size, *, optimizer=None, generator=Non
 
 def _train(data_directory, run, backend, *, model_config=None, epochs=200, patience=20,
            learning_rate=.001, seed=20261027, batch_size=None, frame_batch_size=8,
-           frame_limit=None, resume=False, stop_after_epochs=None):
+           frame_limit=None, resume=False, stop_after_epochs=None, input_view="compensated"):
     if (not isinstance(epochs, int) or epochs < 1 or not isinstance(patience, int) or patience < 1
             or learning_rate <= 0 or not np.isfinite(learning_rate)
             or (batch_size is not None and (not isinstance(batch_size, int) or batch_size < 1))):
@@ -132,10 +132,10 @@ def _train(data_directory, run, backend, *, model_config=None, epochs=200, patie
     model = UDNet(**(model_config or {})).to(device=backend.device, dtype=torch.float32)
     controls = dict(epochs=epochs, patience=patience, learning_rate=learning_rate, seed=seed,
                     requested_batch_size=batch_size, frame_limit=frame_limit, model=model.config,
-                    optimizer="Adam", training_scope="one_channel_all_snr_D1_D2")
+                    optimizer="Adam", training_scope="one_channel_all_snr_D1_D2", input_view=input_view)
     with ExitStack() as stack:
-        training = stack.enter_context(CompactDataset(directory/"train.h5"))
-        validation = stack.enter_context(CompactDataset(directory/"validation.h5"))
+        training = stack.enter_context(CompactDataset(directory/"train.h5", input_view=input_view))
+        validation = stack.enter_context(CompactDataset(directory/"validation.h5", input_view=input_view))
         if (training.split != "train" or validation.split != "validation"
                 or training.channel != validation.channel
                 or training._h.attrs["model_identity"] != validation._h.attrs["model_identity"]
@@ -181,7 +181,7 @@ def _train(data_directory, run, backend, *, model_config=None, epochs=200, patie
             commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
         except (OSError, subprocess.CalledProcessError):
             commit = None
-        metadata = dict(schema=SCHEMA, paper_doi=PAPER_DOI, preprocessing=PREPROCESSING,
+        metadata = dict(schema=SCHEMA, paper_doi=PAPER_DOI, preprocessing=PREPROCESSING, input_view=input_view,
                         inference_code=source_fingerprint(INFERENCE_CODE), identity=identity,
                         model_config=model.config, channel=training.channel,
                         model_identity=str(training._h.attrs["model_identity"]),

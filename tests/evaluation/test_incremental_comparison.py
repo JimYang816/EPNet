@@ -270,7 +270,8 @@ def test_plot_only_needs_neither_data_nor_backend_and_preserves_provenance(exper
 def test_nmse_matches_direct_full_csi_linear_average(experiment):
     report = experiment.run()
     with CompactDataset(experiment.data/"test.h5") as dataset:
-        expected = [10*np.log10(np.mean([dataset.audit(si, fi)["true_nmse_linear"] for fi in range(dataset.frame_count)]))
+        expected = [10*np.log10(np.mean([np.sum(abs(dataset.model_input(si, fi)["csi"]-dataset.reference_csi(fi))**2, axis=(1, 2))
+                                       /np.sum(abs(dataset.reference_csi(fi))**2, axis=(1, 2)) for fi in range(dataset.frame_count)]))
                     for si in range(len(dataset.snr_db))]
     np.testing.assert_allclose(report["nmse"]["mean_nmse_db"], expected, atol=2e-12)
 
@@ -279,7 +280,7 @@ def test_matching_acceptance_statistics_are_reused(experiment, monkeypatch):
     files = fingerprints.DataIdentity({name: experiment.data/name for name in ("test.h5", "model.h5")}).files
     with CompactDataset(experiment.data/"test.h5") as dataset:
         values = [nmse.mean_nmse_db(dataset, si) for si in range(len(dataset.snr_db))]
-        manifest = dict(complete=True, protocol=dataset._h.attrs["schema"], channel=dataset.channel,
+        manifest = dict(complete=True, input_view=dataset.input_view, protocol=dataset._h.attrs["schema"], channel=dataset.channel,
                         config_hash=dataset._h.attrs["config_hash"], snr_db=dataset.snr_db.tolist(), files=files,
                         splits={"test": dict(mean_nmse_db=values, checked_frames=dataset.frame_count)})
     (experiment.data/"manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

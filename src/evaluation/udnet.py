@@ -36,22 +36,22 @@ def score_udnet(dataset, frames, d, result):
 
 
 def _evaluate(dataset_path, checkpoint, run, backend, *, batch_size=8, window_batch_size=2000,
-              cache_dir=None, algorithm_parameters=None):
+              cache_dir=None, algorithm_parameters=None, input_view="compensated"):
     run, checkpoint = Path(run), Path(checkpoint)
     run.mkdir(parents=True, exist_ok=True)
     model, payload = load_model(checkpoint, backend.device)
     checkpoint_sha = file_sha256(checkpoint)
     # The existing evaluator rehashes all baseline dependencies and checks every
     # cached block. It recomputes only the invalid algorithm/covariance/NMSE part.
-    with CompactDataset(dataset_path) as ds:
+    with CompactDataset(dataset_path, input_view=input_view) as ds:
         validate_dataset(payload, ds)
         if ds.split != "test":
             raise ValueError("UDNet formal evaluation requires the test split")
         if not ds._config.get("smoke") and (ds.frame_count != 600 or len(ds._indices) != 512):
             raise ValueError("Formal UDNet evaluation requires all 600 frames and 512 data carriers")
     baseline = comparison.evaluate(dataset_path, run/"baselines", backend, batch_size=batch_size,
-                                   cache_dir=cache_dir, algorithm_parameters=algorithm_parameters)
-    with CompactDataset(dataset_path) as ds:
+                                   cache_dir=cache_dir, algorithm_parameters=algorithm_parameters, input_view=input_view)
+    with CompactDataset(dataset_path, input_view=input_view) as ds:
         validate_dataset(payload, ds)
         guard = fp.DataIdentity({name: ds.path.parent/name for name in ("test.h5", "model.h5")})
         # Training and test records must also remain disjoint at evaluation.
@@ -60,7 +60,7 @@ def _evaluate(dataset_path, checkpoint, run, backend, *, batch_size=8, window_ba
             if np.intersect1d(ds._h["windows/record"][:], train["windows/record"][:]).size:
                 raise ValueError("Training/test record leakage")
         shape = (len(ds.snr_db), ds.frame_count, 2)
-        scientific_identity = dict(schema="udnet-test-v1", data=guard.files, checkpoint_sha256=checkpoint_sha,
+        scientific_identity = dict(schema="udnet-test-v1", input_view=input_view, data=guard.files, checkpoint_sha256=checkpoint_sha,
             code=fp.source_fingerprint(INFERENCE_CODE+fp.INPUT_CODE+("src.evaluation.udnet:score_udnet",
                 "data_generation.src.transmitter.ofdm:decisions")), environment=fp.numerical_environment(backend))
         plan = WindowPlan.build(ds._config["nfft"], ds._indices)
@@ -182,7 +182,7 @@ def write_html(report, run):
 <style>body{{font:16px/1.7 system-ui;max-width:1150px;margin:32px auto;padding:0 20px;color:#182c3d}}img{{max-width:100%}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd5dc;padding:8px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f6f8;padding:16px}}</style>
 <h1>{report['channel']}：UDNet 与四基线</h1>
 <p>完整测试集每 SNR {report['frame_count']} 帧，D1/D2 共用模型，{report['bits_per_snr']:,} 比特。测试集不参与训练和选模。</p>
-<p>复用既有补偿 CSI、划分和 QPSK 映射。32 个连续物理复载波窗、步长 16、两侧各 8 点上下文；仅拼接中心数据槽。局部窗外 ICI 截断。单位噪声协方差白化后，Gram 与 matched 输入共同除以本窗有效数据列的平均能量，ZF 不变；不使用标签或测试集统计量。</p>
+<p>CSI 输入视图：{html.escape(report.get('input_view', 'compensated'))}；保留既有划分和 QPSK 映射。32 个连续物理复载波窗、步长 16、两侧各 8 点上下文；仅拼接中心数据槽。局部窗外 ICI 截断。单位噪声协方差白化后，Gram 与 matched 输入共同除以本窗有效数据列的平均能量，ZF 不变；不使用标签或测试集统计量。</p>
 <table><tr><th>BER</th>{headings}</tr>{rows}</table>
 <img src="ber_snr.png"><img src="nmse_snr.png"><img src="ser_snr.png"><img src="training_curves.png">
 <img src="validation_by_snr.png">

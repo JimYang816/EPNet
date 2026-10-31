@@ -9,7 +9,6 @@ SYMBOL_LABELS = ("P1", "D1", "D2", "P2")
 SYMBOL_COUNT = len(SYMBOL_LABELS)
 DATA_SYMBOL_INDICES = (1, 2)
 TRAINING_SYMBOL_INDICES = (0, 3)
-DATA_SCHEMA = "ncs1-pddp-full-csi-v1"
 CACHE_SCHEMA = "ncs1-pddp-calibration-v1"
 PRIOR_SCHEMA = "ncs1-pddp-frozen-prior-v1"
 VALIDATION_SCHEMA = "pddp-fixed-validation-v1"
@@ -43,7 +42,7 @@ def load_pdd_config(path=None):
 
 
 def identities(c, split):
+    if split not in ("prior", "validation"):
+        raise ValueError("Learning splits use compact_protocol.physical_identities")
     records = c[split+"_records"]
-    if split == "test":
-        return [(r, s) for r in records for s in c["odd_test_starts_seconds" if r % 2 else "even_test_starts_seconds"]]
     return [(r, s) for r in records for s in c["starts_seconds"]]

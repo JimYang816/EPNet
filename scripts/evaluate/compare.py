@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
+    parser.add_argument("--input-view", choices=("raw", "compensated"))
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "all"), default=[],
                        help="Recompute these detectors; still publish all four curves")
@@ -42,7 +43,8 @@ def main():
             evaluate(dataset, Path(config["output"])/channel.lower(), backend,
                      batch_size=args.batch_size if args.batch_size is not None else config["batch_size"],
                      algorithm_parameters=config.get("algorithms"), force=args.force,
-                     cache_dir=config.get("cache_dir"), **config.get("ep", {}))
+                     cache_dir=config.get("cache_dir"), input_view=args.input_view or config.get("input_view", "compensated"),
+                     **config.get("ep", {}))
 
 
 if __name__ == "__main__":

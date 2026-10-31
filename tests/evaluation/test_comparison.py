@@ -88,10 +88,8 @@ def test_cpu_end_to_end_train_only_covariance_full_test_counts_and_resume(tmp_pa
                     expected = mmse(inputs["csi"][d], inputs["observations"][d+1], inputs["masks"]["data"],
                                     variances[j]*np.diag(inputs["noise"]["unit_rx_covariance"]).real)
                     np.testing.assert_allclose(single[j], expected, atol=2e-15)
-            # Independent direct residual proves alpha scaling and the physical
-            # model residual are each applied once, including coherent pilots.
+            # Calibrate the accepted training CSI using the training split's alpha.
             si = 2
-            alpha = ds._h["compensation/alpha"][si]
             residuals = []
             for fi in range(4):
                 x = ds._known[[1, 2]].copy()
@@ -99,9 +97,10 @@ def test_cpu_end_to_end_train_only_covariance_full_test_counts_and_resume(tmp_pa
                 x[:, ds._indices] = qpsk(train["samples/bits"][fi])
                 reference = train["windows/reference_csi"][0].astype(complex)
                 raw = reconstruct(ds._model, train["samples/raw_coefficients"][si, fi].astype(complex))
-                compensated = reference+alpha*(raw-reference)
                 clean = train["samples/clean_observations"][fi][[1, 2]]
-                residual = clean-np.einsum("dij,dj->di", compensated, x)
+                alpha = float(train["compensation/alpha"][si])
+                channel = reference+alpha*(raw-reference)
+                residual = clean-np.einsum("dij,dj->di", channel, x)
                 scale = train["samples/rf_noise_variance"][si, fi]*10**(float(ds.snr_db[si])/10)
                 residuals.append(residual/np.sqrt(scale))
             residuals = np.asarray(residuals)

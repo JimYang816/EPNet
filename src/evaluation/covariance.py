@@ -71,7 +71,9 @@ def calibrate(dataset, entry, backend, batch_size):
                 continue
             LOG.info("%s training covariance SNR=%g, %d frames", dataset.channel, snr, count)
             residuals = np.empty((count, 2, n), complex)
-            alpha = float(dataset._h["compensation/alpha"][si])
+            # Each split has its own accepted alpha. Fit the training view with
+            # training alpha; evaluation alpha must never alter these statistics.
+            alpha = float(train["compensation/alpha"][si]) if dataset.input_view == "compensated" else None
             for start in range(0, count, batch_size):
                 stop = min(start+batch_size, count)
                 x = np.broadcast_to(known, (stop-start, 2, n)).copy()
@@ -79,8 +81,11 @@ def calibrate(dataset, entry, backend, batch_size):
                 coefficients = train["samples/raw_coefficients"][si, start:stop].astype(complex)
                 raw_y = dpss_predict(coefficients, basis, x, backend)
                 clean = train["samples/clean_observations"][start:stop][:, [1, 2]]
-                model_residual = train["samples/model_residual"][start:stop]
-                residual = model_residual+alpha*(clean-model_residual-raw_y)
+                if dataset.input_view == "raw":
+                    residual = clean-raw_y
+                else:
+                    model_residual = train["samples/model_residual"][start:stop]
+                    residual = model_residual+alpha*(clean-model_residual-raw_y)
                 scale = train["samples/rf_noise_variance"][si, start:stop]*10**(float(snr)/10)
                 residuals[start:stop] = residual/np.sqrt(scale[:, None, None])
             covariances, shrinkage = zip(*(shrink_second_moment(residuals[:, d]) for d in range(2)))

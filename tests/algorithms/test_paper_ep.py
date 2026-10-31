@@ -1,24 +1,21 @@
 import numpy as np
 
-from src.algorithms.MMSE import lmmse
-from src.algorithms.ep import EqualizerSystem
 from src.algorithms.ep.real import paper_ep, real_likelihood
+from src.algorithms.likelihood import likelihood_batch, make_whitener
 from src.common.numerics import DenseBackend
 from data_generation.src.transmitter.ofdm import qpsk, decisions
 
 
-def test_full_lmmse_and_real_likelihood_with_complex_correlated_noise():
+def test_real_likelihood_with_complex_correlated_noise():
     rng = np.random.default_rng(130)
     h = rng.normal(size=(7, 4))+1j*rng.normal(size=(7, 4))
     a = rng.normal(size=(7, 7))+1j*rng.normal(size=(7, 7))
     r = a@a.conj().T+np.eye(7)
     y = rng.normal(size=7)+1j*rng.normal(size=7)
     variance = .4
-    system = EqualizerSystem(h, r)
-    expected = h.conj().T@np.linalg.solve(h@h.conj().T+variance*r, y)
-    np.testing.assert_allclose(lmmse(system, y, variance), expected, atol=2e-14)
-    gram, matched = system.likelihood(y, variance)
-    rg, rm = real_likelihood(gram, matched)
+    backend = DenseBackend()
+    gram, matched = likelihood_batch(h[None], y[None], [variance], make_whitener(r, backend), backend)
+    rg, rm = real_likelihood(gram[0], matched[0])
     hr = np.block([[h.real, -h.imag], [h.imag, h.real]])
     rr = variance*.5*np.block([[r.real, -r.imag], [r.imag, r.real]])
     yr = np.r_[y.real, y.imag]

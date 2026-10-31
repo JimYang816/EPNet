@@ -17,7 +17,7 @@ from data_generation.src.receiver.dpss import DPSSModel
 from data_generation.src.receiver.estimation import FrozenPrior
 from data_generation.src.transmitter.ofdm import make_frame, carrier_masks
 from src.common.numerics import DenseBackend
-from src.data import CompactDataset, NCS1Dataset, data_system
+from src.data import CompactDataset, data_system
 from src.data.uncertainty import CovarianceProxy, blocks_from_prior
 
 
@@ -162,9 +162,9 @@ def test_complete_compact_generation_acceptance_and_resume(tmp_path):
     report = accept(resumed, run, c, plots=False)
     assert report["complete"] and all(report["checks"].values())
     assert max(s["maximum_target_error_db"] for s in report["splits"].values()) < 1e-8
-    with CompactDataset(resumed/"test.h5") as ds:
+    with CompactDataset(resumed/"test.h5", input_view="compensated") as ds:
         inputs, labels = ds[0]
-        assert set(inputs) == {"observations", "csi", "noise", "known", "masks", "data_indices", "pilot_indices", "uncertainty"}
+        assert set(inputs) == {"input_view", "observations", "csi", "noise", "known", "masks", "data_indices", "pilot_indices", "uncertainty"}
         assert set(labels) == {"bits", "symbols", "classes", "constellation", "constellation_bits"}
         assert ds.audit(0, 0)["identity"]["payload_repeat"] == 0
         proxy = inputs["uncertainty"]["coefficient_covariance"]
@@ -183,8 +183,6 @@ def test_complete_compact_generation_acceptance_and_resume(tmp_path):
             clean = ds._h["samples/clean_observations"][0]
             np.testing.assert_allclose((observed["observations"]-clean)/np.sqrt(observed["noise"]["rf_variance"]),
                                        (inputs["observations"]-clean)/np.sqrt(inputs["noise"]["rf_variance"]), atol=1e-13)
-    with pytest.raises(ValueError, match="schema"):
-        NCS1Dataset(resumed/"test.h5")
     with pytest.raises(ValueError, match="training data"):
         calibrate_training(resumed/"model.h5", resumed/"test.h5", c)
     with h5py.File(resumed/"model.h5", "r+") as h:
@@ -218,7 +216,7 @@ def test_retarget_reuses_raw_arrays_and_updates_csi_and_uncertainty(tmp_path, mo
         generate(source, original_run, c, archive, chain, prior, DenseBackend(), {"commit": "original"})
         assert accept(source, original_run, c, plots=False)["complete"]
     hashes = {p.name: file_sha256(p) for p in source.glob("*.h5")}
-    with CompactDataset(source/"test.h5") as dataset:
+    with CompactDataset(source/"test.h5", input_view="compensated") as dataset:
         before = dataset.model_input(0, 0)
         reference = dataset.audit(0, 0)["reference_csi"]
         before_alpha = float(dataset._h["compensation/alpha"][0])
@@ -238,7 +236,7 @@ def test_retarget_reuses_raw_arrays_and_updates_csi_and_uncertainty(tmp_path, mo
             for key in names:
                 if not key.startswith("compensation/"):
                     np.testing.assert_array_equal(original[key][:], updated[key][:], err_msg=f"{name}: {key}")
-    with CompactDataset(destination/"test.h5") as dataset:
+    with CompactDataset(destination/"test.h5", input_view="compensated") as dataset:
         after = dataset.model_input(0, 0)
         ratio = float(dataset._h["compensation/alpha"][0])/before_alpha
         assert ratio > 1

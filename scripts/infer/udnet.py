@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--frames", default="0", help="Comma-separated sorted frame indices")
     parser.add_argument("--d", type=int, choices=(1, 2), default=1)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--input-view", choices=("raw", "compensated"), default="compensated")
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -40,7 +41,7 @@ def main():
             np.savez_compressed(args.output, probabilities=probabilities,
                                 classes=probabilities[:, -1].argmax(axis=-1), data_mask=features["data_mask"])
         else:
-            with CompactDataset(args.dataset) as ds:
+            with CompactDataset(args.dataset, input_view=args.input_view) as ds:
                 validate_dataset(payload, ds)
                 selected = np.flatnonzero(np.isclose(ds.snr_db, args.snr, rtol=0, atol=1e-8))
                 frames = [int(value) for value in args.frames.split(",")]
