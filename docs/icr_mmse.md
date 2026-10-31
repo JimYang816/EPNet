@@ -86,6 +86,16 @@ B/A检查固定CSI下的检测器替换，C/A检查传统检测器下的修正�
 
 旧 `icr_ad_ablation_20261030` 检测器初始化审计显示最终B/D未实际学习，结果仍保留，但不能将其差异归因于参数学习。单次修正、去不确定度、去门控及等预算一次修正属于补充诊断；已有产物保留，旧自动搜索/细项训练流水线已移除。
 
+正式A–D自动运行入口如下。`--trained-root` 指向当前配置完成的共同预训练及固定/联合分支，入口核验训练源码、数据、配置和逐层参数学习后复用B/D；A没有待学习检测器，C独立训练具有LMMSE软反馈的CSI修正器，沿用D的8轮修正及B/C阶段预算。所有模型先冻结，再运行验证集和测试集，测试结果不参与选型，也不要求预设的性能排序。
+
+```bash
+python -m scripts.run.icr_ablation --trained-root outputs/runs/icr_full_20261031_095549 --output outputs/runs/icr_ad_current_<run_id> --device cuda --threads 4
+# 中断后按同一代码、配置、数据和权重恢复
+python -m scripts.run.icr_ablation --trained-root outputs/runs/icr_full_20261031_095549 --output outputs/runs/icr_ad_current_<run_id> --device cuda --threads 4 --resume
+```
+
+输出包含 `progress.json`、冻结权重清单、检测器学习审计、每信道/划分/组别的逐层指标、A–D汇总JSON/CSV、BER/NMSE对比图、四项物理记录配对BER差异区间及可传回本地的 `reports.zip`。失败时进度记录异常，既有检查点和历史实验均保留。
+
 每次完整评测至少生成BER–SNR、平均完整矩阵NMSE–SNR，保留实际误码数、逐层结果、数据/代码/权重摘要、计时及物理记录配对统计。预算复核保留的 `legacy_20261030.py` 与 `legacy_lmmse_20261030.py` 是原推理快照，不能删除或当成活动训练模型。
 
 ## 6. 验证与运行
