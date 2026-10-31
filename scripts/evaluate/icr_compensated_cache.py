@@ -163,7 +163,7 @@ def timings(directory, baseline, original, options):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-ref", required=True)
-    parser.add_argument("--config", type=Path, default=ROOT/"configs/training/icr_mmse.json")
+    parser.add_argument("--config", type=Path, required=True, help="Archived flat config for this historical cache-only diagnostic")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--frames", type=int, default=8)

@@ -21,7 +21,7 @@ import numpy as np
 from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Rectangle
 from matplotlib.path import Path as MplPath
 
-from src.algorithms.icr_mmse.model import FEEDBACK_SLICES, CSICorrector, MMSEUnfoldedLayer
+from src.algorithms.icr_mmse.model import FEEDBACK_SLICES, CSICorrector, BudgetedMMSELayer
 
 MM = 1 / 25.4
 WIDTH, HEIGHT = 182.0, 122.0  # IEEE double-column width, millimetres
@@ -38,7 +38,9 @@ TRAIN = "#B23A3A"
 def model_sizes(config_path: Path) -> dict:
     model = json.loads(config_path.read_text(encoding="utf-8"))["model"]
     bandwidth, window, center = model["bandwidth"], model["window_size"], model["center_size"]
-    corrector, equalizer = CSICorrector(bandwidth), MMSEUnfoldedLayer(window, center)
+    corrector = CSICorrector(bandwidth)
+    equalizer = BudgetedMMSELayer(window, center, model["hidden_size"],
+                                 model["initial_soft_damping"], model["initial_csi_loading"])
     per_offset = max(item.stop for item in FEEDBACK_SLICES.values())
     count = lambda module: sum(p.numel() for p in module.parameters())
     return dict(B=bandwidth, K=corrector.width, W=window, S=center,
@@ -130,15 +132,15 @@ def panel_overview(c: Canvas, s: dict) -> None:
     for fill, edge, label in ((CSI_FILL, CSI_EDGE, "CSI refinement (shared CNN)"),
                               (MMSE_FILL, MMSE_EDGE, "MMSE unfolding (per layer)")):
         c.box(x, 117.9, 3.2, 2.2, fill=fill, edge=edge, lw=.55, radius=.4)
-        x = c.extent(c.text(x + 4.2, 119, label, size=6, ha="left")).x1 + 3
+        x = c.extent(c.text(x + 4.2, 119, label, size=5.6, ha="left")).x1 + 3
     c.arrow([(x, 119), (x + 5, 119)], color=TRAIN, lw=.6, dashed=True)
-    c.text(x + 6.2, 119, "training only", size=6, ha="left")
+    c.text(x + 6.2, 119, "training only", size=5.6, ha="left")
 
     # Receiver-side inputs and the deterministic initial state.
     c.box(3, CARD_Y, 21, CARD_H, fill=AUX_FILL, edge=AUX_EDGE, lw=.6)
     c.text(13.5, 106.4, "Receiver inputs", size=6.5, weight="bold")
-    c.text(13.5, 102.6, r"$y,\ H_0,\ x_K$", size=7)
-    c.text(13.5, 99.3, r"$\sigma^2_{\rm RF},\ C$", size=7)
+    c.text(13.5, 102.6, r"$y,\ H_0,\ x_K$", size=6.4)
+    c.text(13.5, 99.3, r"$\sigma^2_{\rm RF},\ C$", size=6.4)
     c.line([(5, 97.2), (22, 97.2)], color=GRID, lw=.4)
     c.text(13.5, 94.7, r"$\mu_0=x_K,\ v_0=m_D$", size=6.4)
 
@@ -170,7 +172,7 @@ def panel_overview(c: Canvas, s: dict) -> None:
     c.text(168.5, 102.4, r"bits $\hat b$ from $p_T$", size=6.3)
     c.text(168.5, 98.6, r"CSI $\hat H=H_T$", size=6.3)
     c.text(168.5, 94.9, r"$\mu_T,\ v_T$", size=6.3)
-    c.text(179.0, 114.6, r"per-layer loss $\frac{1}{T}\sum_{t=1}^{T}(\mathcal{L}_{{\rm CE},t}+\lambda_H\mathcal{L}_{H,t})$",
+    c.text(179.0, 114.6, r"weighted bit CE + $\lambda_H$ weighted CSI NMSE (final weight 0.9)",
            size=6, color=TRAIN, ha="right")
 
     # Observation bus: the same receiver inputs enter every layer.
@@ -363,23 +365,23 @@ def panel_mmse(c: Canvas, s: dict) -> None:
     c.text(143.5, 73.6, r"Global linear step (complete $H_{t+1}$, no matrix inverse)", size=6.3, weight="bold")
     weight = r"W=D_C^{-1}" if s["noise_mode"] == "diagonal" else r"W=C^{-1}"
     c.text(143.5, 70.3, rf"$y_D=y-H_{{t+1}}x_K,\quad {weight},\quad D_C=\mathrm{{diag}}(C)$", size=6.2)
-    c.text(143.5, 66.6, r"$b=m_D\odot H_{t+1}^{\rm H}W y_D,\quad a=m_D\odot H_{t+1}^{\rm H}W H_{t+1}(m_D\odot\mu_t)$",
+    c.text(143.5, 66.6, r"$r=y_D-H_D\mu_t,\quad g=H_D^{\rm H}Wr-\rho\mu_t,\quad p=g/(\delta+\rho)$",
            size=6.1)
-    c.text(143.5, 62.6, r"$\delta=\mathrm{diag}(H_{t+1}^{\rm H}D_C^{-1}H_{t+1})$ (column energy, no Gram)",
+    c.text(143.5, 62.6, r"$\delta=\mathrm{diag}(H^{\rm H}D_C^{-1}H),\quad\rho=\sigma^2_{\rm RF}+\mathrm{softplus}(q)\,\bar\delta$",
            size=5.9, color=MUTED)
     c.arrow([(143.5, 60.6), (143.5, 59.0)], lw=.6)
 
     c.box(110, 48.3, 67, 10.7, fill=MMSE_FILL, edge=MMSE_EDGE, lw=.6)
-    c.text(143.5, 57.4, r"Preconditioned Richardson step, learned $\omega\in(0,2)$", size=6.3,
+    c.text(143.5, 57.4, r"Residual line search, learned $\eta=2\,\mathrm{sigmoid}(a)$", size=6.3,
            weight="bold", color=MMSE_DARK)
-    c.text(143.5, 52.1, r"$z=m_D\odot\mu_t+\omega\,\dfrac{b-a-\sigma^2_{\rm RF}\,m_D\odot\mu_t}{\delta+\sigma^2_{\rm RF}}$",
+    c.text(143.5, 52.1, r"$z=\mu_t+\eta\,\dfrac{\mathrm{Re}(g^{\rm H}p)}{\|Hp\|_W^2+\rho\|p\|^2}\,p$",
            size=6.4)
 
     per_carrier = s["mlp_in"] // s["W"]
     c.arrow([(126.0, 48.3), (126.0, 44.2)], lw=.6)
     c.text(125.2, 46.3, r"$z_j$", size=6, ha="right")
     c.arrow([(161.0, 48.3), (161.0, 44.2)], lw=.6)
-    c.text(159.6, 46.3, rf"$\mu_t,z,b,a,v_t,\ldots$ ({per_carrier}/carrier)", size=5.8, ha="right")
+    c.text(159.6, 46.3, rf"$\mu_t,z,H^{{\rm H}}Wr,p,v_t,\ldots$ ({per_carrier}/carrier)", size=5.8, ha="right")
 
     # Left branch: analytic QPSK denoiser on the linear estimate.
     c.box(110, 21.5, 32, 22.7, edge=MMSE_EDGE, lw=.6)
@@ -399,7 +401,7 @@ def panel_mmse(c: Canvas, s: dict) -> None:
     c.text(zx + 1.9, zy - 1.7, r"$z_j$", size=6, ha="left", color=SOFT_EDGE)
     c.text(cx - a - .9, cy + a + .9, r"$s_a$", size=6, ha="right")
     c.text(126.0, 27.4, r"$\ell^{\rm Q}_{j,a}=-|z_j-s_a|^2/\tau_j$", size=6.2)
-    c.text(126.0, 23.5, r"$\tau_j=\gamma\,(\sigma^2_{\rm RF}/\delta_j+\kappa\,\bar v_t)$", size=5.8)
+    c.text(126.0, 23.5, r"$\tau_j=\gamma\,(\rho/\delta_j+\kappa\,\bar v_t)$", size=5.8)
 
     # Right branch: learned calibration from overlapping subcarrier windows.
     c.box(145, 21.5, 32, 22.7, edge=MMSE_EDGE, lw=.6)
@@ -426,7 +428,7 @@ def panel_mmse(c: Canvas, s: dict) -> None:
     c.text(154.0, 20.0, r"$\ell^{\rm W}$", size=6)
     c.arrow([(143.5, 17.45), (143.5, 16.6)], lw=.6)
     c.box(110, 7.0, 55, 9.6, fill=SOFT_FILL, edge=SOFT_EDGE, lw=.6)
-    c.text(137.5, 14.3, r"$p_{t+1,j,a}=m_{D,j}\,\mathrm{softmax}_a(\ell^{\rm Q}_{j,a}+\ell^{\rm W}_{j,a})$", size=6.3)
+    c.text(137.5, 14.3, r"$p_{t+1}=\beta\,\mathrm{softmax}(\ell^{\rm Q}+\ell^{\rm W})+(1-\beta)p_t$", size=6.0)
     c.text(137.5, 9.8, r"$\mu_{t+1,j}=\sum_a p_{t+1,j,a}\,s_a+x_{K,j},\quad v_{t+1,j}=(1-|\mu_{t+1,j}|^2)\,m_{D,j}$",
            size=6.0)
     c.arrow([(165.0, 12.0), (168.3, 12.0)], color=TRAIN, lw=.55, dashed=True)
@@ -457,7 +459,7 @@ def check_layout(c: Canvas) -> None:
 LATEX = r"""% Generated by scripts/visualize/icr_mmse_paper_figure.py
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=\textwidth]{figures/icr_mmse/icr_mmse_architecture.pdf}
+    \includegraphics[width=\textwidth]{icr_mmse_architecture.pdf}
     \caption{Architecture of ICR-MMSE-Net. (a) $T$ unfolded joint layers. Each layer first refines the
     CSI with $\mathcal{R}_{\phi}$, whose CNN weights $\phi$ are shared by all layers, and then updates the
     soft symbols with a layer-specific MMSE unfolding module $\mathcal{M}_{\theta_t}$, starting from the
@@ -466,13 +468,16 @@ LATEX = r"""% Generated by scripts/visualize/icr_mmse_paper_figure.py
     the soft state of column $j$, giving $<PER>K+<ROW>=<CIN>$ input channels for $B=<B>$; the features use
     $H/s$ and $y/s$ with $s=\|H_0\|_F/\sqrt{N}$. The gated increment, damped by the per-layer $\eta_t$,
     updates only the band $|j-k|\le B$, and all out-of-band entries of $H_0$ are kept.
-    (c) With the corrected channel $H_{t+1}$, a learned preconditioned Richardson step on the LMMSE
-    normal equations gives $z$. QPSK distance logits with temperature $\tau_j$
+    (c) With the corrected channel $H_{t+1}$, a preconditioned residual direction on the
+    CSI-loaded LMMSE normal equations and a bounded, learned exact quadratic line search give $z$.
+    QPSK distance logits with temperature $\tau_j$
     ($\gamma=\min(\max(e^{q},0.01),100)$, $\kappa=\mathrm{softplus}(u)$, $\bar v_t$ the mean data-carrier
     variance) are added to the logits of a windowed MLP calibrator that reads <PERCARRIER> features per carrier
-    ($\mu_t$, $z$, $b$ and $a$ scaled by $1/(\delta+\sigma^2_{\rm RF})$, $v_t$,
+    ($\mu_t$, $z$, the matched residual scaled by $1/(\delta+\rho)$ and direction $p$, $v_t$,
     $\log(1+\sigma^2_{\rm RF}/\delta)$, three masks and the carrier position).
-    $\theta_t=\{\omega,\gamma,\kappa,\mathrm{MLP}\}$ is specific to each layer. Dashed red paths are used
+    A learned probability damping $\beta$ mixes this distribution with the preceding one.
+    $\theta_t=\{a,q,\gamma,\kappa,\beta,\mathrm{MLP}\}$ is specific to each layer; both channels learn all components.
+    Dashed red paths are used
     only in training: the combined loss is used for joint fine-tuning, while equalizer warm-up and
     refinement pre-training use the CE and NMSE terms alone. Matrix shading is schematic.}
     \label{fig:icr_mmse_architecture}
@@ -490,7 +495,7 @@ def write_latex(path: Path, s: dict) -> None:
 
 
 def draw(output: Path, config: Path) -> None:
-    plt.rcParams.update({"font.family": "serif", "font.serif": ["Times New Roman", "DejaVu Serif"],
+    plt.rcParams.update({"font.family": "serif", "font.serif": ["STIXGeneral"],
                          "mathtext.fontset": "stix", "pdf.fonttype": 42, "ps.fonttype": 42,
                          "svg.fonttype": "none"})
     sizes = model_sizes(config)
@@ -512,7 +517,7 @@ def draw(output: Path, config: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path("outputs/paper/figures/icr_mmse"))
+    parser.add_argument("--output", type=Path, default=Path("outputs/paper"))
     parser.add_argument("--config", type=Path, default=Path("configs/training/icr_mmse.json"))
     arguments = parser.parse_args()
     draw(arguments.output, arguments.config)

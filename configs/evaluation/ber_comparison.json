@@ -3,7 +3,7 @@
     "NOF1": "data/processed/nof1_compact_20261026_final/test.h5",
     "NCS1": "data/processed/ncs1_compact_20261026_nmse/test.h5"
   },
-  "output": "outputs/runs/equalizer_comparison_compensated",
+  "output": "outputs/runs/equalizer_comparison_unified_20261031",
   "input_view": "compensated",
   "batch_size": 8,
   "algorithms": {
@@ -15,12 +15,12 @@
     "NOF1": {
       "udnet": "outputs/runs/udnet_compensated/nof1/best.pt",
       "oamp_net2": "outputs/runs/oamp_net2_compensated/nof1/best.pt",
-      "icr_mmse": "outputs/runs/icr_mmse_compensated/nof1/seed_20261028/icr_mmse.pt"
+      "icr_mmse": "outputs/runs/icr_budgeted_unified_20261031/joint_training/nof1/icr_mmse.pt"
     },
     "NCS1": {
       "udnet": "outputs/runs/udnet_compensated/ncs1/best.pt",
       "oamp_net2": "outputs/runs/oamp_net2_compensated/ncs1/best.pt",
-      "icr_mmse": "outputs/runs/icr_mmse_compensated/ncs1/seed_20261028/icr_mmse.pt"
+      "icr_mmse": "outputs/runs/icr_budgeted_20261031/joint_training/ncs1/icr_mmse.pt"
     }
   }
 }

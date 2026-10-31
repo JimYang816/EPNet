@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from src.evaluation.icr_training_perf import benchmark_training
+from src.training.icr_workflow import resolve_config
 
 
 def main():
@@ -26,7 +27,7 @@ def main():
     parser.add_argument("--reference-cache-mib", type=int, default=512)
     parser.add_argument("--skip-ablations", action="store_true")
     args = parser.parse_args()
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = resolve_config(args.config, channel=args.channel)
     report = benchmark_training(config["datasets"][args.channel], args.output, model_config=config["model"],
         checkpoint=args.checkpoint, device=args.device, batch_sizes=args.batch_sizes, stages=args.stages,
         frame_limit=args.frames, validation_frames=args.validation_frames, repeats=args.repeats,

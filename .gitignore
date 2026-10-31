@@ -33,3 +33,5 @@ venv/
 
 # Preserve local historical snapshots without traversing nested worktrees/caches
 /outputs/runs/archive/
+/outputs/runs/_control/
+/outputs/runs/_worktrees/

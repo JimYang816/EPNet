@@ -11,12 +11,14 @@ from threadpoolctl import threadpool_limits
 
 from src.common.numerics import DenseBackend
 from src.training.icr_mmse import train
+from src.training.icr_workflow import resolve_config, STAGES
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/training/icr_mmse.json"))
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
+    parser.add_argument("--stage", choices=STAGES, default="joint")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--output", type=Path)
@@ -34,19 +36,6 @@ def main():
     configuration = json.loads(args.config.read_text(encoding="utf-8"))
     if configuration.get("input_view", "compensated") != "compensated":
         parser.error("Default ICR training is fixed to the accepted compensated CSI")
-    if args.precision is not None:
-        configuration["model"]["precision"] = args.precision
-    if args.noise_mode is not None:
-        configuration["model"]["noise_mode"] = args.noise_mode
-    controls = dict(configuration["training"])
-    for name in ("operator_backend", "batch_size", "prefetch_batches", "reference_cache_mib"):
-        value = getattr(args, name)
-        if value is not None:
-            controls[name] = value
-    if args.max_frames is not None:
-        controls["frame_limit"] = args.max_frames
-    if args.stage_epochs is not None:
-        controls["stage_epochs"] = args.stage_epochs
     if args.threads < 1:
         parser.error("--threads must be positive")
     torch.set_num_threads(args.threads)
@@ -54,8 +43,20 @@ def main():
         for channel, directory in configuration["datasets"].items():
             if args.channel and channel != args.channel:
                 continue
-            train(directory, (args.output or Path(configuration["output"])) / channel.lower(),
-                  DenseBackend(args.device), model_config=configuration["model"], resume=args.resume,
+            resolved = resolve_config(args.config, channel=channel, stage=args.stage, output=args.output)
+            for name in ("precision", "noise_mode"):
+                if getattr(args, name) is not None:
+                    resolved["model"][name] = getattr(args, name)
+            controls = resolved["training"]
+            for name in ("operator_backend", "batch_size", "prefetch_batches", "reference_cache_mib"):
+                if getattr(args, name) is not None:
+                    controls[name] = getattr(args, name)
+            if args.max_frames is not None:
+                controls["frame_limit"] = args.max_frames
+            if args.stage_epochs is not None:
+                controls["stage_epochs"] = args.stage_epochs
+            train(directory, Path(resolved["output"]) / channel.lower(),
+                  DenseBackend(args.device), model_config=resolved["model"], resume=args.resume,
                   **controls)
 
 

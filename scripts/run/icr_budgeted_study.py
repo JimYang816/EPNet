@@ -21,7 +21,7 @@ LEGACY_ROOT = Path("outputs/runs/icr_budgeted_20261031")
 ROOT = Path("outputs/runs/icr_budgeted_unified_20261031")
 CASES = (
     ("fixed_ncs1", "ncs1", "ncs1_compact_20261026_nmse", "fixed_final", "A", "B"),
-    ("fixed_nof1", "nof1", "nof1_compact_20261026_final", "scalar_training", "A", "B"),
+    ("fixed_nof1", "nof1", "nof1_compact_20261026_final", "fixed_final", "A", "B"),
     ("joint_ncs1", "ncs1", "ncs1_compact_20261026_nmse", "joint_training", "C", "D"),
     ("joint_nof1", "nof1", "nof1_compact_20261026_final", "joint_training", "C", "D"),
 )
@@ -46,22 +46,19 @@ def main():
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument("--legacy-scalar-study", action="store_true",
-                        help="Explicitly reproduce the historical mixed scalar/all-parameter study")
     parser.add_argument("--revision", default="exact_legacy", help="Separate output for the source-authenticated legacy baseline")
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
     backend = DenseBackend(args.device)
     source = source_fingerprint(EVALUATION_CODE)
-    root = LEGACY_ROOT if args.legacy_scalar_study else ROOT
-    checkpoints = {name: (LEGACY_ROOT if args.legacy_scalar_study or channel == "ncs1" else ROOT)
-                   /("fixed_final" if name == "fixed_nof1" and not args.legacy_scalar_study else training)
+    root = ROOT
+    checkpoints = {name: (LEGACY_ROOT if channel == "ncs1" else ROOT)
+                   /training
                    /channel/"icr_mmse.pt" for name, channel, _, training, _, _ in CASES}
     # Check the entire study before starting, so a missing final model cannot
     # silently turn a four-case comparison into a partial one.
     hashes = {name: file_sha256(path) for name, path in checkpoints.items()}
-    if not args.legacy_scalar_study:
-        write_json(root/"detector_learning_audit.json", audit_study(checkpoints))
+    write_json(root/"detector_learning_audit.json", audit_study(checkpoints))
     if args.split == "test":
         for name in checkpoints:
             validation = json.loads((root/("frozen_validation_"+args.revision)/name/"comparison.json").read_text())
@@ -72,13 +69,13 @@ def main():
                 raise ValueError(f"{name}: validation performance/budget acceptance failed")
     output = root/("frozen_"+args.split+"_"+args.revision)
     summary = dict(split=args.split, checkpoint_sha256=hashes, cases={}, complete=False,
-                   detector_policy="historical_mixed" if args.legacy_scalar_study else "all_physical_and_neural")
+                   detector_policy="all_physical_and_neural")
     with threadpool_limits(args.threads):
         for name, channel, dataset, _, linear, unfolded in CASES:
             run = output/name
             path = run/"comparison.json"
             reused = False
-            if not args.legacy_scalar_study and channel == "ncs1" and not path.exists():
+            if channel == "ncs1" and not path.exists():
                 previous = LEGACY_ROOT/("frozen_"+args.split+"_"+args.revision)/name
                 previous_report = json.loads((previous/"comparison.json").read_text())
                 if (not previous_report.get("complete") or previous_report["checkpoint_sha256"] != hashes[name]
