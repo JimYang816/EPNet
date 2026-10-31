@@ -4,8 +4,9 @@
 
 ## 文档与当前实验范围
 
+- 数据生成已完成，后续所有均衡算法统一使用当前已验收的数据集及既定划分进行训练和测试。
 - `README.md` 仅保留项目简要说明及文件目录结构；未经用户明确允许，不得修改。
-- NCS1 与 NOF1 使用 `configs/data/` 中的两份固定配置，共用同一实际 DPSS 时间基与延迟支撑；不再搜索历史候选或使用参考 CSI 辅助补偿。
+- NCS1 与 NOF1 使用 `configs/data/` 中的两份固定配置，共用同一实际 DPSS 时间基与延迟支撑。
 - 原始 WATERMARK 源包放在 `data/raw/watermark/`；生成数据、缓存和实验结果不得提交到 Git。
 
 ## 实现约定
@@ -16,7 +17,7 @@
 - 数据读取与预处理代码放在 `src/data/`，算法、训练及评测代码分别放在 `src/algorithms/`、`src/training/` 和 `src/evaluation/`；对应运行入口放在根目录 `scripts/`。
 - `data/processed/` 保存真实接收机链路数据及估计得到的不完美 CSI，供训练与评测使用。
 - 实验结果存放在`outputs/runs/`,每次实验完成后删除无用的文件。
-- 每次实验结果指标图至少包括BER-SNR、平均NMSE-SNR、参考CSI热力图、估计CSI热力图、误差CSI热力图，热力图强度使用dB。
+- 每次实验结果指标图至少包括BER-SNR、平均NMSE-SNR。
 
 ## 开发与运行方式
 

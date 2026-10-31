@@ -1,0 +1,22 @@
+{
+  "datasets": {
+    "NOF1": "data/processed/nof1_compact_20261026_final/test.h5",
+    "NCS1": "data/processed/ncs1_compact_20261026_nmse/test.h5"
+  },
+  "output": "outputs/runs/equalizer_comparison_20261026",
+  "batch_size": 8,
+  "algorithms": {
+    "single_tap_mmse": {},
+    "full_matrix_lmmse": {},
+    "ep": {
+      "iterations": 10,
+      "damping": 0.2,
+      "epsilon": 5e-7
+    },
+    "robust_ep": {
+      "iterations": 10,
+      "damping": 0.2,
+      "epsilon": 5e-7
+    }
+  }
+}

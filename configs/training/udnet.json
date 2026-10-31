@@ -1,0 +1,26 @@
+{
+  "datasets": {
+    "NOF1": "data/processed/nof1_compact_20261026_final",
+    "NCS1": "data/processed/ncs1_compact_20261026_nmse"
+  },
+  "output": "outputs/runs/udnet_normalized_20261027",
+  "model": {"layers": 22, "window_size": 32, "hidden_size": 48},
+  "training": {
+    "epochs": 200,
+    "patience": 20,
+    "learning_rate": 0.001,
+    "seed": 20261027,
+    "batch_size": null,
+    "frame_batch_size": 8
+  },
+  "evaluation": {
+    "batch_size": 8,
+    "window_batch_size": 2000,
+    "algorithm_parameters": {
+      "single_tap_mmse": {},
+      "full_matrix_lmmse": {},
+      "ep": {"iterations": 10, "damping": 0.2, "epsilon": 0.0000005},
+      "robust_ep": {"iterations": 10, "damping": 0.2, "epsilon": 0.0000005}
+    }
+  }
+}

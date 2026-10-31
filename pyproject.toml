@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.26", "scipy>=1.12", "h5py>=3.10", "matplotlib>=3.8", "
 [project.optional-dependencies]
 test = ["pytest>=8"]
 gpu = ["torch>=2.2"]
+learning = ["torch>=2.2"]
 
 [tool.setuptools.packages.find]
 include = ["data_generation*", "src*"]
