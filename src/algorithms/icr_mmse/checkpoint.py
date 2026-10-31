@@ -12,6 +12,7 @@ from src.data.contract import DEFAULT_INPUT_VIEW
 SCHEMA = "watermark-icr-mmse-net-view-band14-v3"
 INPUT_VIEW = DEFAULT_INPUT_VIEW
 INFERENCE_CODE = ("src.data.contract", "src.algorithms.icr_mmse.model", "src.algorithms.icr_mmse.operators",
+                  "src.algorithms.icr_mmse.lmmse",
                   "src.algorithms.icr_mmse.dpss",
                   "src.algorithms.icr_mmse.checkpoint", "src.data.icr_mmse",
                   "src.evaluation.inputs", "src.common.numerics",

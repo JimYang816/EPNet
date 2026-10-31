@@ -15,6 +15,7 @@ from torch import nn
 from torch.nn import functional as functional
 
 from .operators import BandChannel, band_indices
+from .lmmse import FullMatrixLMMSELayer
 from .dpss import DPSSChannel, base_energy, base_local, reference_energy
 
 
@@ -177,7 +178,7 @@ class ICRMMSEnet(nn.Module):
     def __init__(self, layers=8, bandwidth=16, initial_damping=.1, window_size=32,
                  center_size=16, hidden_size=48, correction_mode="iterative",
                  use_uncertainty=True, use_gate=True, correction_passes=1, equalizer_repeats=1,
-                 precision="complex64", noise_mode="full"):
+                 precision="complex64", noise_mode="full", detector_mode="unfolded"):
         super().__init__()
         if (not isinstance(layers, int) or isinstance(layers, bool) or layers < 1
                 or not isinstance(bandwidth, int) or isinstance(bandwidth, bool) or bandwidth < 0
@@ -188,6 +189,7 @@ class ICRMMSEnet(nn.Module):
                 or not isinstance(use_uncertainty, bool) or not isinstance(use_gate, bool)
                 or precision not in ("complex64", "complex128")
                 or noise_mode not in ("diagonal", "full")
+                or detector_mode not in ("unfolded", "lmmse")
                 or (correction_mode != "once" and correction_passes != 1)):
             raise ValueError("Invalid ICR-MMSE-Net controls")
         self.config = dict(layers=layers, bandwidth=bandwidth, initial_damping=initial_damping,
@@ -195,14 +197,15 @@ class ICRMMSEnet(nn.Module):
                            correction_mode=correction_mode, use_uncertainty=use_uncertainty,
                            use_gate=use_gate, correction_passes=correction_passes,
                            equalizer_repeats=equalizer_repeats, precision=precision,
-                           noise_mode=noise_mode)
+                           noise_mode=noise_mode, detector_mode=detector_mode)
         real_dtype = torch.float32 if precision == "complex64" else torch.float64
         complex_dtype = torch.complex64 if precision == "complex64" else torch.complex128
         self.corrector = CSICorrector(bandwidth).to(dtype=real_dtype)
         self.eta_logits = nn.Parameter(torch.full((layers,), math.log(initial_damping / (1 - initial_damping)),
                                                  dtype=real_dtype))
-        self.equalizers = nn.ModuleList(MMSEUnfoldedLayer(window_size, center_size, hidden_size)
-                                        for _ in range(layers)).to(dtype=real_dtype)
+        self.equalizers = nn.ModuleList(
+            MMSEUnfoldedLayer(window_size, center_size, hidden_size) if detector_mode == "unfolded"
+            else FullMatrixLMMSELayer() for _ in range(layers)).to(dtype=real_dtype)
         self.register_buffer("constellation", torch.tensor([1+1j, 1-1j, -1+1j, -1-1j],
                                                             dtype=complex_dtype) / math.sqrt(2))
         # Runtime-only single-entry cache: never serialized into checkpoints.
@@ -330,6 +333,10 @@ class ICRMMSEnet(nn.Module):
             variances.append(variance)
             channels.append(channel)
             diagnostics.append(detail)
+            if self.config["detector_mode"] == "lmmse" and not enabled:
+                # The same fixed channel and unit prior give the same solution.
+                # Charge only the single useful solve, including during warmup.
+                break
         return ICRMMSEOutput(torch.stack(probabilities, 1), torch.stack(states, 1),
                              torch.stack(variances, 1), tuple(channels), tuple(diagnostics))
 

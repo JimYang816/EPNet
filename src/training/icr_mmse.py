@@ -40,6 +40,8 @@ def configure_stage(model, stage, *, final_equalizer_only=False):
         correction = name.startswith("corrector.") or name == "eta_logits"
         parameter.requires_grad_(name.startswith(final_prefix) if final_equalizer_only
             else stage == "C" or (correction if stage == "B" else not correction))
+        if correction and model.config["correction_mode"] == "fixed":
+            parameter.requires_grad_(False)
 
 
 def run_epoch(model, dataset, device, *, stage, batch_size=2, frame_limit=None,
@@ -154,6 +156,8 @@ def _selection_key(stage, metrics, *, stage_c_nmse_limit=None, per_snr_limits=No
 
 
 def _optimizer(model, stage, learning_rate, correction_learning_rate=None):
+    if not any(p.requires_grad for p in model.parameters()):
+        return None
     if stage != "C" or correction_learning_rate is None:
         return torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=learning_rate)
     groups = {"equalizer": [], "correction": []}
@@ -174,7 +178,7 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
            stage_c_nmse_max_relative_degradation=None, stage_c_learning_rate=None,
            sample_order="sequential", per_snr_acceptance=None,
            stage_c_final_equalizer_only=False):
-    if (len(stage_epochs) != 3 or any(isinstance(e, bool) or not isinstance(e, int) or e < 1 for e in stage_epochs)
+    if (len(stage_epochs) != 3 or any(isinstance(e, bool) or not isinstance(e, int) or e < 0 for e in stage_epochs)
             or not math.isfinite(lambda_h) or lambda_h <= 0
             or not math.isfinite(learning_rate) or learning_rate <= 0
             or isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1
@@ -352,6 +356,9 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
             stage_pipeline = dict(pipeline, final_equalizer_only=final_only)
             rate = stage_c_learning_rate if stage == "C" and stage_c_learning_rate is not None else learning_rate
             optimizer = _optimizer(model, stage, rate, stage_c_correction_learning_rate)
+            if (stage_epochs[index] and optimizer is None
+                    and not (stage == "B" and configuration["correction_mode"] == "fixed")):
+                raise ValueError(f"Stage {stage} has an epoch budget but no trainable parameters")
             if index == stage_index and updater_state is not None:
                 optimizer.load_state_dict(updater_state)
             if selected is None:
@@ -376,6 +383,20 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
                     per_snr_limits=per_snr_selection[stage]["limits"] if stage in per_snr_selection else None)
             if per_snr_acceptance is not None and stage in ("B", "C") and stage not in per_snr_selection:
                 raise ValueError("Resume is missing fixed per-SNR validation bounds")
+            if stage_epochs[index] == 0:
+                # A fixed detector has no A training; a fixed CSI has no B
+                # training. Persist the boundary without fake optimizer steps.
+                model.load_state_dict(selected)
+                name = ("warmup.pt", "correction_pretrained.pt", "icr_mmse.pt")[index]
+                atomic_save(run / name, payload(stage, stage != "A", finished=index == 2))
+                atomic_save(latest, dict(identity=identity, stage_index=index+1, epoch=0,
+                    model=cpu_state(model), history=history, selected=None, selected_key=None,
+                    updater=None, rng=_rng_state(), stage_c_selection=stage_c_selection,
+                    per_snr_selection=per_snr_selection, finished=index == 2))
+                LOG.info("%s stage=%s skipped (zero training budget)", train_ds.channel, stage)
+                epoch = 0
+                selected = selected_key = updater_state = None
+                continue
             for current in range(epoch if index == stage_index else 0, stage_epochs[index]):
                 sampling_seed = epoch_sampling_seed(seed, stage, current+1) if sample_order == "snr_interleaved" else None
                 training = run_epoch(model, train_ds, backend.device, stage=stage, batch_size=batch_size,
@@ -411,7 +432,7 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
                 atomic_save(latest, dict(identity=identity, stage_index=index+1 if stage_finished else index,
                     epoch=0 if stage_finished else current+1, model=cpu_state(model), history=history,
                     selected=None if stage_finished else selected, selected_key=None if stage_finished else selected_key,
-                    updater=None if stage_finished else optimizer.state_dict(), rng=_rng_state(),
+                    updater=None if stage_finished or optimizer is None else optimizer.state_dict(), rng=_rng_state(),
                     stage_c_selection=stage_c_selection,
                     per_snr_selection=per_snr_selection,
                     finished=stage_finished and index == 2))
