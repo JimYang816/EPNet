@@ -77,17 +77,21 @@ def test_receive_gain_invariance_and_rank_deficient_or_zero_channels():
             np.testing.assert_allclose(result.symbols, reference, atol=2e-12)
 
 
-def test_torch_path_matches_numpy_with_multiple_leading_batch_axes():
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_torch_path_matches_numpy_with_multiple_leading_batch_axes(device):
     torch = pytest.importorskip("torch")
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA hardware unavailable")
     batch, backend = system(), DenseBackend()
     from src.algorithms.likelihood import batch_likelihood
     gram, matched = batch_likelihood(batch, make_whitener(batch.noise_covariance, backend), backend)
     gram = np.stack([gram, 2*gram])
     matched = np.stack([matched, 2*matched])
     expected = mmse_dfe(gram, matched, backend)
-    tensor_backend = SimpleNamespace(torch=torch, array=torch.as_tensor)
-    actual = mmse_dfe(torch.from_numpy(gram), torch.from_numpy(matched), tensor_backend)
-    np.testing.assert_allclose(actual.numpy(), expected, atol=2e-13)
+    tensor_backend = SimpleNamespace(torch=torch, array=lambda x: torch.as_tensor(x, device=device))
+    actual = mmse_dfe(torch.as_tensor(gram, device=device), torch.as_tensor(matched, device=device), tensor_backend)
+    assert actual.dtype == torch.complex128
+    np.testing.assert_allclose(actual.cpu().numpy(), expected, rtol=2e-12, atol=2e-13)
     np.testing.assert_allclose(mmse_dfe(gram[0, 0], matched[0, 0], backend), expected[0, 0], atol=2e-13)
 
 

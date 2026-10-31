@@ -43,7 +43,9 @@ def mmse_dfe(gram, matched, backend):
         upper = lower.conj().swapaxes(-2, -1)
     estimates = xp.zeros_like(matched)
     decisions = xp.zeros_like(matched)
-    amplitude = np.sqrt(.5)
+    # torch.where(condition, scalar, scalar) uses the default float dtype on
+    # older PyTorch releases. Keep feedback in the likelihood's real dtype.
+    amplitude = xp.full_like(matched.real[..., 0], np.sqrt(.5))
     for i in range(n-1, -1, -1):
         feedback = (upper[..., i, i+1:]*decisions[..., i+1:]).sum(-1)
         value = (filtered[..., i]-feedback)/upper[..., i, i].real
