@@ -4,7 +4,7 @@
 
 主配置采用 `model.noise_mode="diagonal"`：保留现有数据及各频点噪声功率，用单位 RF 噪声协方差的实对角近似完整协方差。`"full"` 保留完整协方差求解，供同权重对照；模型构造器未指定该字段时仍采用 `"full"`，避免缺省配置改变含义。检查点记录实际模式，原有代码身份校验继续生效。
 默认数据由用户固定：SNR 0→30 dB 时，NOF1 平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB。沿用已验收数据及原划分；未经用户明确要求不得更换为 raw CSI 或修改目标。
-研究目标是在 NOF1、NCS1 上对比 MMSE 基线、UDNet 与 ICR-MMSE-Net 的 BER，同时验证全矩阵 CSI 改善并比较效率。
+研究目标是在 NOF1、NCS1 上统一对比 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 与 ICR-MMSE-Net 的 BER，同时验证全矩阵 CSI 改善并比较效率。
 配置和代码本身不代表目标已经达到；本地仅做小规模 CPU 验证，正式结论来自服务器上的完整实验。
 
 ICR-MMSE-Net 默认 `model.precision="complex64"`：复数物理算子、CSI、观测、噪声协方差和监督张量采用 `complex64`，实数特征、RF 方差及网络参数采用 `float32`。
@@ -26,7 +26,7 @@ ICR 输入适配不预先消除导频，由模型按当前 CSI 重算；模型�
 `supervision()` 独立读取标签与参考 CSI；阶段 A 训练通过 `include_reference=False` 只读取符号监督。
 模型 forward 不接受标签或参考参数。参考信道参与既定数据构造，并可用于训练监督及验证/测试评分；结果必须标记其参考辅助构造属性。
 
-Single-tap MMSE、Full-matrix LMMSE、UDNet 和 ICR-MMSE-Net 均使用同一 compensated 视图。主评测不再拟合或加载 EP 专用误差协方差。
+六种算法均使用同一 compensated 视图。主评测不再拟合或加载 EP 专用误差协方差。
 UDNet 特征、ICR 检查点和评测缓存均绑定输入视图及代码/数据身份，不复用 raw 实验产物。旧 raw 训练评测已停止、产物已清理；数据中的 raw 字段保留供显式诊断。
 `dense` 和 `dense_device` 均先在双精度中完成完整补偿构造，再转换为模型精度。单独 DPSS 乘积算子无法表示参考 CSI 的子空间外分量，不支持 compensated 主实验；应选择两个完整矩阵路径。
 
@@ -136,7 +136,7 @@ NOF1、NCS1 分别训练；每个信道全部 SNR 与 D1/D2 共享参数，不�
 
 ## 5. 比较、消融与输出
 
-主比较为 Single-tap MMSE、Full-matrix LMMSE、compensated 视图重新训练的 UDNet、ICR-MMSE-Net，共四种算法。EP、Robust EP 已从算法注册、评测配置、统计对照和效率对比中移除。
+主比较为 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net，共六种算法。统一入口为 `python -m scripts.evaluate.compare`，配置为 `configs/evaluation/ber_comparison.json`，见 [统一评测说明](equalizer_comparison.md)。ICR 训练流水线内部的固定 CSI、MMSE 与 UDNet 对照用于选型及消融诊断，正式六算法汇总由统一入口完成。EP、Robust EP 不参与性能或效率对比。
 固定 CSI 使用同次阶段 A 的 `warmup.pt`。一次修正、逐层修正、去不确定度、去门控从同一预热均衡器开始，
 不改变完整基础 CSI、全局算子或物理网格对齐。修正模式支持 `fixed/once/iterative`；其余控制见配置 `ablations`。
 预算匹配一次修正使用固定 CSI 下的额外有效均衡更新，不增加参数；预算由验证数据上的全预处理/全迭代实测耗时选择并报告匹配比例。
@@ -204,17 +204,19 @@ python -m scripts.run.icr_mmse --config configs/training/icr_mmse.json --device 
 
 独立训练与完整流水线按实验目的选择一个入口。独立训练检查点位于 `<output>/<channel>/icr_mmse.pt`；完整流水线的最终主模型位于 `<output>/<channel>/seed_<seed>/icr_mmse.pt`，各自保存 `latest.pt` 供对应入口续训。省略 `--config` 时使用上述统一配置。
 训练与评测输出都放在 `outputs/runs/`；数据、特征缓存、检查点和结果不提交 Git。
-ICR-MMSE-Net 的实现位于 `src/algorithms/icr_mmse/`。当前学习算法保留 UDNet 与 ICR-MMSE-Net，独立历史 EPNet 及旧版全 CSI 评测流程已移除。
+ICR-MMSE-Net 的实现位于 `src/algorithms/icr_mmse/`。当前学习算法为 UDNet、OAMP-Net2 与 ICR-MMSE-Net。
+论文主稿与图片统一存放在 `outputs/paper/`；算法图使用 `python -m scripts.visualize.icr_mmse_paper_figure` 生成至 `outputs/paper/figures/icr_mmse/`。
 
-正式效率比较使用单独入口，四种算法依次在各自新进程中运行。以下以 NOF1 的首个种子为例：
+正式效率比较使用单独入口，六种算法依次在各自新进程中运行，须提供三个学习模型的检查点。以下以 NOF1 的首个种子为例，先完成六算法统一评测：
 
 ```bash
 python -m scripts.evaluate.icr_efficiency \
   --dataset data/processed/nof1_compact_20261026_final/test.h5 \
-  --comparison-report outputs/runs/icr_mmse_compensated/nof1/seed_20261028/evaluation/metrics.json \
+  --comparison-report outputs/runs/equalizer_comparison_compensated/nof1/metrics.json \
   --checkpoint outputs/runs/icr_mmse_compensated/nof1/seed_20261028/icr_mmse.pt \
-  --udnet-checkpoint outputs/runs/icr_mmse_compensated/nof1/udnet_compensated/best.pt \
-  --output outputs/runs/icr_mmse_compensated/nof1/efficiency.json --device cuda --batch-size 2 --threads 4
+  --udnet-checkpoint outputs/runs/udnet_compensated/nof1/best.pt \
+  --oamp-net2-checkpoint outputs/runs/oamp_net2_compensated/nof1/best.pt \
+  --output outputs/runs/equalizer_comparison_compensated/nof1/efficiency.json --device cuda --batch-size 2 --threads 4
 ```
 
 该入口加载各自检查点及热噪声模型，不读取训练数据或测试标签；参考 CSI 和 alpha 只用于既定输入构造。

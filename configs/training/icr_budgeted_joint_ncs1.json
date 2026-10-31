@@ -1,0 +1,34 @@
+{
+  "datasets": {"NCS1": "data/processed/ncs1_compact_20261026_nmse"},
+  "output": "outputs/runs/icr_budgeted_20261031/joint_training",
+  "input_view": "compensated",
+  "model": {
+    "layers": 8,
+    "bandwidth": 16,
+    "precision": "complex64",
+    "noise_mode": "diagonal",
+    "correction_mode": "iterative",
+    "detector_mode": "budgeted",
+    "initial_soft_damping": 0.8,
+    "initial_csi_loading": 0.1,
+    "window_size": 32,
+    "center_size": 16,
+    "hidden_size": 48
+  },
+  "training": {
+    "detector_parameters": "all",
+    "stage_epochs": [10, 10, 10],
+    "warmup_checkpoint": "outputs/runs/icr_budgeted_20261031/fixed_training/ncs1/warmup.pt",
+    "lambda_h": 1.0,
+    "batch_size": 8,
+    "learning_rate": 0.001,
+    "stage_c_learning_rate": 0.0001,
+    "stage_c_correction_learning_rate": 0.00001,
+    "seed": 20261028,
+    "operator_backend": "dense_device",
+    "prefetch_batches": 2,
+    "reference_cache_mib": 8192,
+    "sample_order": "snr_interleaved",
+    "loss_options": {"objective": "bit_ce", "final_weight": 0.9}
+  }
+}

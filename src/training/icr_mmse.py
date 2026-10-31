@@ -29,12 +29,14 @@ TRAINING_CODE = INFERENCE_CODE + ("src.training.icr_mmse", "src.evaluation.finge
                                  "src.data.icr_sampling", "src.training.icr_acceptance")
 
 
-def configure_stage(model, stage, *, final_equalizer_only=False):
+def configure_stage(model, stage, *, final_equalizer_only=False, detector_parameters="all"):
     """Optionally restrict C to the detector after the final CSI update."""
     if stage not in ("A", "B", "C"):
         raise ValueError("Unknown ICR-MMSE-Net training stage")
     if final_equalizer_only and stage != "C":
         raise ValueError("Final-equalizer-only training requires stage C")
+    if detector_parameters not in ("all", "scalars"):
+        raise ValueError("Unknown detector parameter selection")
     final_prefix = f"equalizers.{len(model.equalizers)-1}."
     for name, parameter in model.named_parameters():
         correction = name.startswith("corrector.") or name == "eta_logits"
@@ -42,12 +44,15 @@ def configure_stage(model, stage, *, final_equalizer_only=False):
             else stage == "C" or (correction if stage == "B" else not correction))
         if correction and model.config["correction_mode"] == "fixed":
             parameter.requires_grad_(False)
+        if (detector_parameters == "scalars" and name.startswith("equalizers.")
+                and (".hidden." in name or ".classifier." in name)):
+            parameter.requires_grad_(False)
 
 
 def run_epoch(model, dataset, device, *, stage, batch_size=2, frame_limit=None,
               lambda_h=.1, optimizer=None, operator_backend="dense", prefetch_batches=0,
               compact_reference=None, reference_cache=None, snr_indices=None, frame_indices=None,
-              sampling_seed=None, final_equalizer_only=False):
+              sampling_seed=None, final_equalizer_only=False, loss_options=None):
     """Every batch recomputes the entire current-H trajectory, including stage B."""
     if final_equalizer_only and stage != "C":
         raise ValueError("Final-equalizer-only loss requires stage C")
@@ -73,9 +78,11 @@ def run_epoch(model, dataset, device, *, stage, batch_size=2, frame_limit=None,
             # Earlier outputs are frozen in this mode. Avoid diluting the only
             # trainable detector's CE by the number of unrolled layers.
             loss_output = (replace(result, probabilities=result.probabilities[:, -1:],
-                                   channels=result.channels[-1:]) if final_equalizer_only else result)
+                                   channels=result.channels[-1:],
+                                   log_probabilities=result.log_probabilities[:, -1:]) if final_equalizer_only else result)
             loss = layerwise_loss(loss_output, targets["classes"], reference, inputs["data_mask"],
-                                  lambda_h=lambda_h if stage != "A" else 0., csi_only=stage == "B")
+                                  lambda_h=lambda_h if stage != "A" else 0., csi_only=stage == "B",
+                                  **(loss_options or {}))
             if not torch.isfinite(loss):
                 raise FloatingPointError("Nonfinite ICR-MMSE-Net loss")
             if training:
@@ -155,9 +162,22 @@ def _selection_key(stage, metrics, *, stage_c_nmse_limit=None, per_snr_limits=No
     return (metrics["ber"], metrics["loss"])
 
 
-def _optimizer(model, stage, learning_rate, correction_learning_rate=None):
+def _optimizer(model, stage, learning_rate, correction_learning_rate=None, neural_learning_rate_scale=1.):
     if not any(p.requires_grad for p in model.parameters()):
         return None
+    if neural_learning_rate_scale != 1.:
+        groups = {"physical": [], "neural": [], "correction": []}
+        for name, parameter in model.named_parameters():
+            if not parameter.requires_grad:
+                continue
+            correction = name.startswith("corrector.") or name == "eta_logits"
+            neural = name.startswith("equalizers.") and (".hidden." in name or ".classifier." in name)
+            groups["correction" if correction else "neural" if neural else "physical"].append(parameter)
+        rates = dict(physical=learning_rate, neural=learning_rate*neural_learning_rate_scale,
+                     correction=correction_learning_rate if stage == "C" and correction_learning_rate is not None
+                     else learning_rate)
+        return torch.optim.Adam([dict(params=params, lr=rates[name], name=name)
+                                 for name, params in groups.items() if params])
     if stage != "C" or correction_learning_rate is None:
         return torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=learning_rate)
     groups = {"equalizer": [], "correction": []}
@@ -177,7 +197,8 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
            stage_b_checkpoint=None, stage_c_correction_learning_rate=None,
            stage_c_nmse_max_relative_degradation=None, stage_c_learning_rate=None,
            sample_order="sequential", per_snr_acceptance=None,
-           stage_c_final_equalizer_only=False):
+           stage_c_final_equalizer_only=False, loss_options=None, detector_parameters="all",
+           neural_learning_rate_scale=1.):
     if (len(stage_epochs) != 3 or any(isinstance(e, bool) or not isinstance(e, int) or e < 0 for e in stage_epochs)
             or not math.isfinite(lambda_h) or lambda_h <= 0
             or not math.isfinite(learning_rate) or learning_rate <= 0
@@ -195,6 +216,16 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
         per_snr_acceptance = acceptance_controls(per_snr_acceptance)
     if not isinstance(stage_c_final_equalizer_only, bool):
         raise ValueError("Stage-C final-equalizer-only control must be boolean")
+    if detector_parameters not in ("all", "scalars"):
+        raise ValueError("Unknown detector parameter selection")
+    if (isinstance(neural_learning_rate_scale, bool) or not math.isfinite(neural_learning_rate_scale)
+            or neural_learning_rate_scale <= 0):
+        raise ValueError("Neural learning-rate scale must be positive and finite")
+    if detector_parameters == "scalars" and neural_learning_rate_scale != 1.:
+        raise ValueError("Neural learning-rate scale requires learning all detector parameters")
+    if loss_options is not None and (not isinstance(loss_options, dict)
+            or set(loss_options)-{"objective", "final_weight"}):
+        raise ValueError("Unknown loss controls")
     if stage_c_final_equalizer_only and stage_c_correction_learning_rate is not None:
         raise ValueError("Frozen CSI correction cannot have a stage-C correction learning rate")
     if stage_c_learning_rate is not None and (
@@ -241,6 +272,12 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
         controls.update(sample_order=sample_order, sampler="snr-rounds-stage-epoch-v1")
     if per_snr_acceptance is not None:
         controls["per_snr_acceptance"] = per_snr_acceptance
+    if loss_options:
+        controls["loss_options"] = loss_options
+    if detector_parameters != "all":
+        controls["detector_parameters"] = detector_parameters
+    if neural_learning_rate_scale != 1.:
+        controls["neural_learning_rate_scale"] = neural_learning_rate_scale
     if not resume and any(path.exists() for path in (latest, final, run / "warmup.pt")):
         raise FileExistsError("Training output exists; use resume or a new run directory")
     torch.manual_seed(seed)
@@ -249,7 +286,7 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
         validation_ds = stack.enter_context(CompactDataset(directory / "validation.h5", input_view=INPUT_VIEW))
         pipeline = dict(operator_backend=operator_backend, prefetch_batches=prefetch_batches,
                         compact_reference=compact_reference,
-                        reference_cache=ReferenceCache(reference_cache_mib * 2**20))
+                        reference_cache=ReferenceCache(reference_cache_mib * 2**20), loss_options=loss_options)
         if (train_ds.split != "train" or validation_ds.split != "validation"
                 or train_ds.channel != validation_ds.channel
                 or train_ds._h.attrs["model_identity"] != validation_ds._h.attrs["model_identity"]
@@ -352,10 +389,12 @@ def _train(data_directory, run, backend, *, model_config=None, stage_epochs=(10,
         for index in range(stage_index, 3):
             stage = "ABC"[index]
             final_only = stage == "C" and stage_c_final_equalizer_only
-            configure_stage(model, stage, final_equalizer_only=final_only)
+            configure_stage(model, stage, final_equalizer_only=final_only,
+                            detector_parameters=detector_parameters)
             stage_pipeline = dict(pipeline, final_equalizer_only=final_only)
             rate = stage_c_learning_rate if stage == "C" and stage_c_learning_rate is not None else learning_rate
-            optimizer = _optimizer(model, stage, rate, stage_c_correction_learning_rate)
+            optimizer = _optimizer(model, stage, rate, stage_c_correction_learning_rate,
+                                   neural_learning_rate_scale)
             if (stage_epochs[index] and optimizer is None
                     and not (stage == "B" and configuration["correction_mode"] == "fixed")):
                 raise ValueError(f"Stage {stage} has an epoch budget but no trainable parameters")

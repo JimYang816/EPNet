@@ -36,6 +36,75 @@ def test_stage_freezing():
             assert value.requires_grad == (stage == "C" or (correction if stage == "B" else not correction))
 
 
+def test_scalar_detector_control_preserves_the_csi_training_schedule():
+    model = ICRMMSEnet(layers=2, bandwidth=2, detector_mode="budgeted", initial_soft_damping=.8)
+    for stage in "ABC":
+        configure_stage(model, stage, detector_parameters="scalars")
+        for name, value in model.named_parameters():
+            correction = name.startswith("corrector.") or name == "eta_logits"
+            neural = name.startswith("equalizers.") and (".hidden." in name or ".classifier." in name)
+            expected = not neural and (stage == "C" or (correction if stage == "B" else not correction))
+            assert value.requires_grad == expected
+
+
+def test_two_rate_optimizer_keeps_both_detector_components_trainable():
+    from src.training.icr_mmse import _optimizer
+    model = ICRMMSEnet(layers=2, bandwidth=2, detector_mode="budgeted", initial_soft_damping=.8)
+    for stage in "ABC":
+        configure_stage(model, stage, detector_parameters="all")
+        optimizer = _optimizer(model, stage, .001, .0001, .01)
+        groups = {group["name"]: group for group in optimizer.param_groups}
+        actual = [id(p) for group in groups.values() for p in group["params"]]
+        assert len(actual) == len(set(actual))
+        assert set(actual) == {id(p) for p in model.parameters() if p.requires_grad}
+        if stage != "B":
+            assert groups["physical"]["lr"] == .001
+            assert groups["neural"]["lr"] == .00001
+            for name, p in model.named_parameters():
+                if name.startswith("equalizers."):
+                    assert p.requires_grad
+                    group = "neural" if ".hidden." in name or ".classifier." in name else "physical"
+                    assert id(p) in {id(value) for value in groups[group]["params"]}
+        if stage != "A":
+            assert groups["correction"]["lr"] == (.0001 if stage == "C" else .001)
+
+
+def test_two_rate_learning_updates_hidden_head_and_physics(experiment):
+    from src.data.compact import CompactDataset
+    from src.training.icr_mmse import _optimizer, run_epoch
+    directory, _ = experiment
+    model = ICRMMSEnet(layers=2, bandwidth=2, detector_mode="budgeted", initial_soft_damping=.8)
+    configure_stage(model, "A", detector_parameters="all")
+    initial = cpu_state(model)
+    optimizer = _optimizer(model, "A", .001, neural_learning_rate_scale=.01)
+    with CompactDataset(directory/"train.h5", input_view="compensated") as dataset:
+        for _ in range(2):
+            run_epoch(model, dataset, "cpu", stage="A", batch_size=1, frame_limit=1,
+                      optimizer=optimizer, loss_options=dict(objective="bit_ce", final_weight=.9))
+    for i in range(2):
+        for component in ("hidden.weight", "classifier.weight", "step_logit"):
+            key = f"equalizers.{i}.{component}"
+            assert not torch.equal(model.state_dict()[key], initial[key]), key
+
+
+def test_two_rate_training_resume_keeps_optimizer_identity(experiment):
+    directory, root = experiment
+    options = dict(model_config=dict(layers=2, bandwidth=2, detector_mode="budgeted", initial_soft_damping=.8),
+                   stage_epochs=(1, 0, 1), batch_size=1, frame_limit=1, seed=31,
+                   neural_learning_rate_scale=.01, loss_options=dict(objective="bit_ce", final_weight=.9))
+    full = train(directory, root/"two_rate_full", DenseBackend(), **options)
+    train(directory, root/"two_rate_resume", DenseBackend(), stop_after_epochs=1, **options)
+    with pytest.raises(ValueError, match="identity changed"):
+        train(directory, root/"two_rate_resume", DenseBackend(), resume=True,
+              **dict(options, neural_learning_rate_scale=.1))
+    resumed = train(directory, root/"two_rate_resume", DenseBackend(), resume=True, **options)
+    a, b = (torch.load(path, weights_only=True) for path in (full, resumed))
+    assert a["identity"]["controls"]["neural_learning_rate_scale"] == .01
+    assert a["history"] == b["history"]
+    for name in a["model"]:
+        torch.testing.assert_close(a["model"][name], b["model"][name], rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("resume_stop", (1, 2, 3))
 def test_three_stages_resume_and_never_open_test(experiment, monkeypatch, resume_stop):
     directory, root = experiment

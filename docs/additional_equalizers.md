@@ -131,8 +131,8 @@ OAMP 逐 SNR/帧/D 块缓存，可跨 batch 大小复用并校验损坏；`--for
 UDNet 保留已有缓存行为，ICR 保留已有完整重评行为。
 离线绘图使用保存数值，不需要数据、检查点或 GPU。
 
-效率入口 `scripts.evaluate.icr_efficiency` 增加 `--oamp-net2-checkpoint` 后，
-在六个独立新进程中测量六种方法；不传该参数时保留原四算法接口。
+效率入口 `scripts.evaluate.icr_efficiency` 默认在六个独立新进程中测量六种方法，
+必须提供 `--checkpoint`、`--udnet-checkpoint` 和 `--oamp-net2-checkpoint`。
 MMSE-PIC 使用统一报告中的实际迭代参数。OAMP 的逐样本完整谱分解计入预处理时间，
 不复用训练谱特征或 BER 结果缓存；计时进程禁止读取测试标签。
 

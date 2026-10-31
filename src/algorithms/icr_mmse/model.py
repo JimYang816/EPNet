@@ -86,12 +86,16 @@ class CSICorrector(nn.Module):
 class MMSEUnfoldedLayer(nn.Module):
     """Global linear step, then local windows whose centers cover every row once."""
 
-    def __init__(self, window_size=32, center_size=16, hidden_size=48):
+    def __init__(self, window_size=32, center_size=16, hidden_size=48,
+                 step_mode="fixed", initial_soft_damping=None):
         super().__init__()
         self.window_size, self.center_size = window_size, center_size
+        self.step_mode = step_mode
         self.step_logit = nn.Parameter(torch.zeros(()))
         self.temperature_log = nn.Parameter(torch.zeros(()))
         self.uncertainty_log = nn.Parameter(torch.tensor(math.log(math.expm1(.1))))
+        self.register_parameter("soft_damping_logit", None if initial_soft_damping is None else
+            nn.Parameter(torch.tensor(math.log(initial_soft_damping/(1-initial_soft_damping)))))
         self.hidden = nn.Linear(14 * window_size, hidden_size)
         self.classifier = nn.Linear(hidden_size, 4 * center_size)
         nn.init.zeros_(self.classifier.weight)
@@ -112,7 +116,8 @@ class MMSEUnfoldedLayer(nn.Module):
     def forward(self, channel, observations, known, mean, variance, data_mask, pilot_mask,
                 null_mask, positions, rf_variance, covariance_factor, constellation,
                 use_uncertainty=True, covariance_diagonal=None, column_weights=None,
-                base_column_energy=None, return_diagnostics=True):
+                base_column_energy=None, return_diagnostics=True,
+                previous_log_probabilities=None, return_log_probabilities=False):
         # H changed: reconstruct pilot cancellation AND both complete normal actions.
         cancelled = observations - channel.matvec(known)
         if covariance_diagonal is None:
@@ -124,13 +129,27 @@ class MMSEUnfoldedLayer(nn.Module):
         else:
             solve_cov = lambda value: torch.cholesky_solve(value[..., None], covariance_factor).squeeze(-1)
         data_mean = mean * data_mask
-        matched = channel.adjoint(solve_cov(cancelled)) * data_mask
-        normal = channel.adjoint(solve_cov(channel.matvec(data_mean))) * data_mask
+        weighted_cancelled = solve_cov(cancelled)
+        matched = channel.adjoint(weighted_cancelled) * data_mask
+        predicted = channel.matvec(data_mean)
+        normal = channel.adjoint(solve_cov(predicted)) * data_mask
         weights = covariance_diagonal.reciprocal() if column_weights is None else column_weights
         diagonal = channel.column_energy(weights, base_energy=base_column_energy).clamp_min(1e-20)
         denominator = (diagonal + rf_variance[:, None]).clamp_min(1e-20)
-        step = 2 * self.step_logit.sigmoid()
-        estimate = data_mean + step * (matched - normal - rf_variance[:, None] * data_mean) / denominator
+        gradient = matched - normal - rf_variance[:, None] * data_mean
+        direction = gradient / denominator
+        step = (2 * self.step_logit.sigmoid()).expand(len(mean))
+        direction_prediction = None
+        if self.step_mode == "rayleigh":
+            direction_prediction = channel.matvec(direction)
+            numerator = (gradient.conj() * direction).real.sum(-1)
+            curvature = (direction_prediction.conj() * solve_cov(direction_prediction)).real.sum(-1)
+            curvature = curvature + rf_variance * direction.abs().square().sum(-1)
+            # Exact quadratic line search in the preconditioned direction.
+            # Multiplying by a learned factor in (0,2) preserves descent of
+            # the linear LMMSE objective, without assuming eigenvalues < 2.
+            step = step * numerator.clamp_min(0) / curvature.clamp_min(1e-20)
+        estimate = data_mean + step[:, None] * direction
         feedback_variance = variance if use_uncertainty else torch.zeros_like(variance)
         uncertainty = (feedback_variance * data_mask).sum(-1) / data_mask.sum().clamp_min(1)
         tau = (rf_variance[:, None] / diagonal + functional.softplus(self.uncertainty_log)
@@ -144,12 +163,120 @@ class MMSEUnfoldedLayer(nn.Module):
                               coordinates[None, :, None].expand(len(mean), -1, -1)), -1)
         local_logits = self._window_logits(features)
         logits = -(estimate[..., None] - constellation).abs().square() / tau[..., None]
-        probabilities = (logits + local_logits.to(logits.dtype)).softmax(-1) * data_mask[None, :, None]
+        logits = logits + local_logits.to(logits.dtype)
+        log_probabilities = logits.log_softmax(-1)
+        if self.soft_damping_logit is not None:
+            if previous_log_probabilities is None:
+                raise ValueError("Soft-state damping requires the previous QPSK distribution")
+            log_probabilities = torch.logaddexp(
+                log_probabilities + functional.logsigmoid(self.soft_damping_logit),
+                previous_log_probabilities + functional.logsigmoid(-self.soft_damping_logit))
+            probabilities = log_probabilities.exp() * data_mask[None, :, None]
+        else:
+            # Preserve legacy inference numerics when safeguards are disabled.
+            probabilities = logits.softmax(-1) * data_mask[None, :, None]
         next_mean = (probabilities * constellation).sum(-1) + known
         next_variance = (1 - next_mean.abs().square()).clamp_min(0) * data_mask
         diagnostics = (dict(pilot_cancelled=cancelled, matched=matched, normal_action=normal,
                             residual=observations - channel.matvec(mean)) if return_diagnostics else {})
-        return probabilities, next_mean, next_variance, diagnostics
+        if return_diagnostics:
+            if direction_prediction is None:
+                direction_prediction = channel.matvec(direction)
+
+            def objective(state, prediction):
+                residual = cancelled - prediction
+                return ((residual.conj() * solve_cov(residual)).real.sum(-1)
+                        + rf_variance * state.abs().square().sum(-1))
+
+            diagnostics.update(linear_step=step,
+                linear_objective_before=objective(data_mean, predicted),
+                linear_objective_after=objective(estimate, predicted+step[:, None]*direction_prediction),
+                soft_objective_after=objective(next_mean*data_mask, channel.matvec(next_mean*data_mask)),
+                state_change_energy=((next_mean-mean)*data_mask).abs().square().mean(-1))
+        result = probabilities, next_mean, next_variance, diagnostics
+        return (*result, log_probabilities) if return_log_probabilities else result
+
+
+class BudgetedMMSELayer(MMSEUnfoldedLayer):
+    """Residual-form LMMSE update with three full channel actions per layer.
+
+    The previous four-action implementation separately formed matched and
+    normal vectors. Fusing them leaves room for an exact quadratic line search
+    without an inverse, a Gram matrix, or additional channel actions. A learned
+    nonnegative loading models residual CSI error in channel-energy units.
+    """
+
+    def __init__(self, window_size=32, center_size=16, hidden_size=48,
+                 initial_soft_damping=.5, initial_csi_loading=.01):
+        super().__init__(window_size, center_size, hidden_size, "rayleigh", initial_soft_damping)
+        self.csi_loading_log = nn.Parameter(torch.tensor(math.log(math.expm1(initial_csi_loading))))
+
+    def forward(self, channel, observations, known, mean, variance, data_mask, pilot_mask,
+                null_mask, positions, rf_variance, covariance_factor, constellation,
+                use_uncertainty=True, covariance_diagonal=None, column_weights=None,
+                base_column_energy=None, return_diagnostics=True,
+                previous_log_probabilities=None, return_log_probabilities=False):
+        if covariance_diagonal is None:
+            if covariance_factor is None:
+                raise ValueError("Diagonal noise requires a covariance diagonal")
+            covariance_diagonal = covariance_factor.abs().square().sum(-1)
+        solve_cov = ((lambda value: value / covariance_diagonal) if covariance_factor is None else
+                     (lambda value: torch.cholesky_solve(value[..., None], covariance_factor).squeeze(-1)))
+        weights = covariance_diagonal.reciprocal() if column_weights is None else column_weights
+        diagonal = channel.column_energy(weights, base_energy=base_column_energy).clamp_min(1e-20)
+        count = data_mask.sum().clamp_min(1)
+        energy = (diagonal * data_mask).sum(-1) / count
+        loading = functional.softplus(self.csi_loading_log) * energy
+        regularizer = rf_variance + loading
+        denominator = diagonal + regularizer[:, None]
+        data_mean = mean * data_mask
+        # Includes the current corrected pilot response exactly, even when H changes.
+        residual = observations - channel.matvec(data_mean + known)
+        weighted_residual = solve_cov(residual)
+        matched_residual = channel.adjoint(weighted_residual) * data_mask
+        gradient = matched_residual - regularizer[:, None] * data_mean
+        direction = gradient / denominator
+        direction_prediction = channel.matvec(direction)
+        numerator = (gradient.conj() * direction).real.sum(-1).clamp_min(0)
+        curvature = (direction_prediction.conj() * solve_cov(direction_prediction)).real.sum(-1)
+        curvature = curvature + regularizer * direction.abs().square().sum(-1)
+        step = 2 * self.step_logit.sigmoid() * numerator / curvature.clamp_min(1e-20)
+        estimate = data_mean + step[:, None] * direction
+        feedback_variance = variance if use_uncertainty else torch.zeros_like(variance)
+        uncertainty = (feedback_variance * data_mask).sum(-1) / count
+        tau = (regularizer[:, None] / diagonal + functional.softplus(self.uncertainty_log)
+               * uncertainty[:, None]).clamp_min(1e-5) * self.temperature_log.exp().clamp(.01, 100)
+        masks = torch.stack((data_mask, pilot_mask, null_mask), -1).to(variance.dtype)
+        coordinates = (positions.to(variance.dtype) - positions.float().mean()) / max(len(positions), 1)
+        # Same 14 features/window and same neural width as the original detector.
+        # The two old matched/normal slots now hold the residual match and direction.
+        features = torch.cat((_real_pair(data_mean), _real_pair(estimate),
+            _real_pair(matched_residual / denominator), _real_pair(direction),
+            feedback_variance[..., None], torch.log1p(rf_variance[:, None] / diagonal)[..., None],
+            masks[None].expand(len(mean), -1, -1),
+            coordinates[None, :, None].expand(len(mean), -1, -1)), -1)
+        logits = -(estimate[..., None] - constellation).abs().square() / tau[..., None]
+        logp = (logits + self._window_logits(features).to(logits.dtype)).log_softmax(-1)
+        if self.soft_damping_logit is not None:
+            if previous_log_probabilities is None:
+                raise ValueError("Soft-state damping requires the previous QPSK distribution")
+            logp = torch.logaddexp(logp + functional.logsigmoid(self.soft_damping_logit),
+                                 previous_log_probabilities + functional.logsigmoid(-self.soft_damping_logit))
+        probabilities = logp.exp() * data_mask[None, :, None]
+        next_mean = (probabilities * constellation).sum(-1) + known
+        next_variance = (1 - next_mean.abs().square()).clamp_min(0) * data_mask
+        detail = {}
+        if return_diagnostics:
+            before = ((residual.conj() * weighted_residual).real.sum(-1)
+                      + regularizer * data_mean.abs().square().sum(-1))
+            after_residual = residual - step[:, None] * direction_prediction
+            after = ((after_residual.conj() * solve_cov(after_residual)).real.sum(-1)
+                     + regularizer * estimate.abs().square().sum(-1))
+            detail = dict(residual=residual, linear_step=step, csi_loading=loading,
+                          linear_objective_before=before, linear_objective_after=after,
+                          state_change_energy=((next_mean - mean)*data_mask).abs().square().mean(-1))
+        result = probabilities, next_mean, next_variance, detail
+        return (*result, logp) if return_log_probabilities else result
 
 
 @dataclass
@@ -159,6 +286,7 @@ class ICRMMSEOutput:
     variances: torch.Tensor
     channels: tuple[BandChannel, ...]
     diagnostics: tuple[dict, ...]
+    log_probabilities: torch.Tensor | None = None
 
     @property
     def bands(self):
@@ -178,7 +306,8 @@ class ICRMMSEnet(nn.Module):
     def __init__(self, layers=8, bandwidth=16, initial_damping=.1, window_size=32,
                  center_size=16, hidden_size=48, correction_mode="iterative",
                  use_uncertainty=True, use_gate=True, correction_passes=1, equalizer_repeats=1,
-                 precision="complex64", noise_mode="full", detector_mode="unfolded"):
+                 precision="complex64", noise_mode="full", detector_mode="unfolded",
+                 step_mode="fixed", initial_soft_damping=None, initial_csi_loading=.01):
         super().__init__()
         if (not isinstance(layers, int) or isinstance(layers, bool) or layers < 1
                 or not isinstance(bandwidth, int) or isinstance(bandwidth, bool) or bandwidth < 0
@@ -189,7 +318,12 @@ class ICRMMSEnet(nn.Module):
                 or not isinstance(use_uncertainty, bool) or not isinstance(use_gate, bool)
                 or precision not in ("complex64", "complex128")
                 or noise_mode not in ("diagonal", "full")
-                or detector_mode not in ("unfolded", "lmmse")
+                or detector_mode not in ("unfolded", "lmmse", "budgeted")
+                or isinstance(initial_csi_loading, bool) or not math.isfinite(initial_csi_loading)
+                or initial_csi_loading <= 0
+                or step_mode not in ("fixed", "rayleigh")
+                or (initial_soft_damping is not None and (isinstance(initial_soft_damping, bool)
+                    or not isinstance(initial_soft_damping, (int, float)) or not 0 < initial_soft_damping < 1))
                 or (correction_mode != "once" and correction_passes != 1)):
             raise ValueError("Invalid ICR-MMSE-Net controls")
         self.config = dict(layers=layers, bandwidth=bandwidth, initial_damping=initial_damping,
@@ -197,14 +331,18 @@ class ICRMMSEnet(nn.Module):
                            correction_mode=correction_mode, use_uncertainty=use_uncertainty,
                            use_gate=use_gate, correction_passes=correction_passes,
                            equalizer_repeats=equalizer_repeats, precision=precision,
-                           noise_mode=noise_mode, detector_mode=detector_mode)
+                           noise_mode=noise_mode, detector_mode=detector_mode,
+                           step_mode=step_mode, initial_soft_damping=initial_soft_damping,
+                           initial_csi_loading=initial_csi_loading)
         real_dtype = torch.float32 if precision == "complex64" else torch.float64
         complex_dtype = torch.complex64 if precision == "complex64" else torch.complex128
         self.corrector = CSICorrector(bandwidth).to(dtype=real_dtype)
         self.eta_logits = nn.Parameter(torch.full((layers,), math.log(initial_damping / (1 - initial_damping)),
                                                  dtype=real_dtype))
         self.equalizers = nn.ModuleList(
-            MMSEUnfoldedLayer(window_size, center_size, hidden_size) if detector_mode == "unfolded"
+            MMSEUnfoldedLayer(window_size, center_size, hidden_size, step_mode, initial_soft_damping) if detector_mode == "unfolded"
+            else BudgetedMMSELayer(window_size, center_size, hidden_size, initial_soft_damping,
+                                   initial_csi_loading) if detector_mode == "budgeted"
             else FullMatrixLMMSELayer() for _ in range(layers)).to(dtype=real_dtype)
         self.register_buffer("constellation", torch.tensor([1+1j, 1-1j, -1+1j, -1-1j],
                                                             dtype=complex_dtype) / math.sqrt(2))
@@ -295,7 +433,8 @@ class ICRMMSEnet(nn.Module):
         # Uniform QPSK data prior. Known pilots and nulls have deterministic variance zero.
         mean = known
         variance = data_mask.to(real_dtype)[None].expand(batch, -1)
-        probabilities, states, variances, channels, diagnostics = [], [], [], [], []
+        probabilities, states, variances, channels, diagnostics, log_states = [], [], [], [], [], []
+        previous_log = observations.real.new_full((*observations.shape, 4), -math.log(4))
         enabled = correction_enabled and self.config["correction_mode"] != "fixed"
         for index, equalizer in enumerate(self.equalizers):
             feedback_mean = mean.detach() if detach_feedback else mean
@@ -322,23 +461,27 @@ class ICRMMSEnet(nn.Module):
                     feedback_mean = mean.detach() if detach_feedback else mean
                     feedback_variance = variance.detach() if detach_feedback else variance
                 # During B no gradient can bypass the stop through an earlier decision.
-                p, mean, variance, detail = equalizer(channel, observations, known, feedback_mean,
+                p, mean, variance, detail, previous_log = equalizer(channel, observations, known, feedback_mean,
                     feedback_variance, data_mask, pilot_mask, null_mask, carrier_positions, rf_variance,
                     covariance_factor, self.constellation.to(initial_channel.dtype),
                     use_uncertainty=self.config["use_uncertainty"], covariance_diagonal=diagonal,
                     column_weights=column_weights, base_column_energy=shared_energy,
-                    return_diagnostics=return_diagnostics)
+                    return_diagnostics=return_diagnostics,
+                    previous_log_probabilities=previous_log.detach() if detach_feedback else previous_log,
+                    return_log_probabilities=True)
             probabilities.append(p)
             states.append(mean)
             variances.append(variance)
             channels.append(channel)
             diagnostics.append(detail)
+            log_states.append(previous_log)
             if self.config["detector_mode"] == "lmmse" and not enabled:
                 # The same fixed channel and unit prior give the same solution.
                 # Charge only the single useful solve, including during warmup.
                 break
         return ICRMMSEOutput(torch.stack(probabilities, 1), torch.stack(states, 1),
-                             torch.stack(variances, 1), tuple(channels), tuple(diagnostics))
+                             torch.stack(variances, 1), tuple(channels), tuple(diagnostics),
+                             log_probabilities=torch.stack(log_states, 1))
 
 
 ICRMMSE = ICRMMSEnet
@@ -350,15 +493,43 @@ def csi_nmse(output, reference_channel):
                         for channel in output.channels], dim=1)
 
 
-def layerwise_loss(output, classes, reference_channel, data_mask, lambda_h=.1, *, csi_only=False):
+def layerwise_loss(output, classes, reference_channel, data_mask, lambda_h=.1, *, csi_only=False,
+                   objective="legacy_symbol_ce", final_weight=None):
     """Independent supervision entry point; averaged over layers and examples."""
     if not math.isfinite(lambda_h) or lambda_h < 0:
         raise ValueError("lambda_h must be finite and nonnegative")
+    if objective not in ("legacy_symbol_ce", "symbol_ce", "bit_ce"):
+        raise ValueError("Unknown detection objective")
+    if final_weight is not None and (isinstance(final_weight, bool)
+            or not isinstance(final_weight, (int, float)) or not 0 <= final_weight <= 1):
+        raise ValueError("Final-layer loss weight must be between zero and one")
     if csi_only:
         return csi_nmse(output, reference_channel).mean()
     probabilities = output.probabilities[:, :, data_mask]
     if classes.shape != (len(probabilities), probabilities.shape[-2]):
         raise ValueError("Supervised classes must cover data carriers in physical order")
-    selected = probabilities.gather(-1, classes[:, None, :, None].expand(-1, probabilities.shape[1], -1, 1))
-    ce = -selected.clamp_min(torch.finfo(selected.dtype).tiny).log().mean()
-    return ce if lambda_h == 0 else ce + lambda_h * csi_nmse(output, reference_channel).mean()
+    layers = probabilities.shape[1]
+    if objective == "legacy_symbol_ce":
+        selected = probabilities.gather(-1, classes[:, None, :, None].expand(-1, layers, -1, 1))
+        terms = -selected.clamp_min(torch.finfo(selected.dtype).tiny).log().mean((0, 2, 3))
+    else:
+        if output.log_probabilities is None:
+            raise ValueError("Stable detection loss requires model log probabilities")
+        logp = output.log_probabilities[:, :, data_mask]
+        if objective == "symbol_ce":
+            terms = -logp.gather(-1, classes[:, None, :, None].expand(-1, layers, -1, 1)).mean((0, 2, 3))
+        else:
+            # Mapping c=2*b0+b1: use the same bit marginals as final BER decisions.
+            marginal0 = torch.stack((torch.logsumexp(logp[..., :2], -1),
+                                     torch.logsumexp(logp[..., 2:], -1)), -1)
+            marginal1 = torch.stack((torch.logsumexp(logp[..., (0, 2)], -1),
+                                     torch.logsumexp(logp[..., (1, 3)], -1)), -1)
+            bits = (classes//2, classes%2)
+            terms = sum(-values.gather(-1, bit[:, None, :, None].expand(-1, layers, -1, 1)).mean((0, 2, 3))
+                        for values, bit in zip((marginal0, marginal1), bits)) * .5
+    weights = terms.new_full((layers,), 1/layers if final_weight is None else
+                             (1-final_weight)/max(layers-1, 1))
+    if final_weight is not None:
+        weights[-1] = final_weight if layers > 1 else 1.
+    ce = (terms*weights).sum()
+    return ce if lambda_h == 0 else ce + lambda_h * (csi_nmse(output, reference_channel).mean(0)*weights).sum()

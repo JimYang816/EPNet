@@ -30,3 +30,6 @@ venv/
 /outputs/**
 !/outputs/**/
 !/outputs/**/.gitkeep
+
+# Preserve local historical snapshots without traversing nested worktrees/caches
+/outputs/runs/archive/

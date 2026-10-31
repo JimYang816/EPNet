@@ -18,7 +18,8 @@
 - 数据生成部分独立放在根目录 `data_generation/`，保留 `scripts/`、`src/` 和 `tests/` 布局。数据生成代码放在 `data_generation/src/`，包括发射信号生成、WATERMARK 信道仿真、接收机处理、CSI 估计及数据整理与导出；运行入口和测试分别放在 `data_generation/scripts/` 与 `data_generation/tests/`。
 - 数据读取与预处理代码放在 `src/data/`，算法、训练及评测代码分别放在 `src/algorithms/`、`src/training/` 和 `src/evaluation/`；对应运行入口放在根目录 `scripts/`。
 - `data/processed/` 保存真实接收机链路数据及估计得到的不完美 CSI，供训练与评测使用。
-- 实验结果存放在`outputs/runs/`,每次实验完成后删除无用的文件。
+- 实验结果存放在 `outputs/runs/`；旧实验与消融结果必须保留，清理仅针对确认无用的临时文件和测试缓存。
+- 论文主稿、图片与相关 TeX 材料统一存放在 `outputs/paper/`。
 - 每次实验结果指标图至少包括BER-SNR、平均NMSE-SNR。
 
 ## 开发与运行方式

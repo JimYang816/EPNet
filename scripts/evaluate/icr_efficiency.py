@@ -1,4 +1,4 @@
-"""Benchmark compensated-CSI detectors in fresh processes; optional six-way mode."""
+"""Benchmark all six compensated-CSI detectors in fresh processes."""
 from __future__ import annotations
 
 import argparse
@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--comparison-report", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--udnet-checkpoint", type=Path, required=True)
-    parser.add_argument("--oamp-net2-checkpoint", type=Path, help="Include OAMP-Net2 and MMSE-PIC for six-way timing")
+    parser.add_argument("--oamp-net2-checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--batch-size", type=int, default=2)

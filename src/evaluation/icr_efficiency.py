@@ -27,9 +27,8 @@ from src.evaluation.fingerprints import (DataIdentity, ROOT,
                                          numerical_environment, source_fingerprint)
 from src.evaluation.icr_mmse import process_peak_bytes
 from src.evaluation.inputs import prepare_batch
-from src.evaluation.registry import ALGORITHMS, AVAILABLE_ALGORITHMS, resolve_parameters
+from src.evaluation.registry import AVAILABLE_ALGORITHMS, resolve_parameters
 
-IDENTIFIERS = tuple(a.identifier for a in ALGORITHMS) + ("udnet", "icr_mmse")
 AVAILABLE_IDENTIFIERS = tuple(a.identifier for a in AVAILABLE_ALGORITHMS) + ("udnet", "oamp_net2", "icr_mmse")
 
 
@@ -75,6 +74,9 @@ def _worker(options):
                 from src.algorithms.icr_mmse.checkpoint import load_model, validate_dataset
             model, payload = load_model(options[identifier + "_checkpoint"], device)
             validate_dataset(payload, dataset)
+            if identifier == "icr_mmse":
+                from src.algorithms.icr_mmse.inference import prepare_frozen_inference
+                prepare_frozen_inference(model)
             if identifier == "udnet":
                 preprocessor = LocalPreprocessor(WindowPlan.build(dataset._config["nfft"], dataset._indices),
                                                  covariance, device)
@@ -101,7 +103,7 @@ def _worker(options):
                     inputs, keys = next(iterator)
                 except StopIteration:
                     break
-                output = model(**inputs)
+                output = model(**inputs, return_diagnostics=False)
                 if not torch.isfinite(output.probabilities).all():
                     raise FloatingPointError("Nonfinite ICR probabilities")
                 backend.synchronize()
@@ -150,7 +152,7 @@ def _worker(options):
 def benchmark(dataset_path, comparison_report, checkpoint, udnet_checkpoint, *, output=None,
               device="cpu", batch_size=2, frame_limit=None, threads=4, algorithms=None, oamp_net2_checkpoint=None):
     if algorithms is None:
-        algorithms = AVAILABLE_IDENTIFIERS if oamp_net2_checkpoint is not None else IDENTIFIERS
+        algorithms = AVAILABLE_IDENTIFIERS
     if (device not in ("cpu", "cuda") or any(isinstance(x, bool) or not isinstance(x, int) or x < 1
         for x in (batch_size, threads)) or (frame_limit is not None and
         (isinstance(frame_limit, bool) or not isinstance(frame_limit, int) or frame_limit < 1))

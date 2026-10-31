@@ -5,49 +5,10 @@ from threadpoolctl import threadpool_limits
 
 from data_generation.tests.test_compact import fixture
 from data_generation.src.dataset.compact_export import generate
-from data_generation.src.dataset.compact_math import reconstruct
 from src.common.numerics import DenseBackend
 from src.data.compact import CompactDataset, data_system
 from src.evaluation.comparison import evaluate, test_batch as prepare_test_batch
-from src.evaluation.covariance import dpss_predict, shrink_second_moment
-from src.algorithms.likelihood import likelihood_batch, make_whitener
 from src.algorithms.MMSE.single_tap import mmse
-
-
-def test_dpss_action_matches_all_full_matrix_couplings():
-    c, prior, _, _ = fixture()
-    rng = np.random.default_rng(221)
-    coeff = rng.normal(size=(3, 2, 4))+1j*rng.normal(size=(3, 2, 4))
-    x = rng.normal(size=(3, 2, 14))+1j*rng.normal(size=(3, 2, 14))
-    basis = prior.model.sampled_basis.reshape(4, 14, 2)[[1, 2]]
-    actual = dpss_predict(coeff, basis, x, DenseBackend())
-    expected = np.stack([np.einsum("dij,dj->di", reconstruct(prior.model, co), xx) for co, xx in zip(coeff, x)])
-    np.testing.assert_allclose(actual, expected, atol=3e-15)
-
-
-def test_shrinkage_preserves_powers_and_colored_psd_covariance():
-    rng = np.random.default_rng(63)
-    x = rng.normal(size=(700, 5))+1j*rng.normal(size=(700, 5))
-    x[:, 1] += 2j*x[:, 0]
-    covariance, shrinkage = shrink_second_moment(x)
-    np.testing.assert_allclose(np.diag(covariance).real, np.mean(abs(x)**2, axis=0))
-    np.testing.assert_allclose(covariance, covariance.conj().T, atol=1e-15)
-    assert 0 <= shrinkage < 1
-    assert np.linalg.eigvalsh(covariance).min() > 0
-    assert abs(covariance[0, 1]) > .5
-
-
-def test_zero_error_covariance_reproduces_ordinary_likelihood():
-    rng = np.random.default_rng(82)
-    h = rng.normal(size=(2, 6, 3))+1j*rng.normal(size=(2, 6, 3))
-    y = rng.normal(size=(2, 6))+1j*rng.normal(size=(2, 6))
-    a = rng.normal(size=(6, 6))+1j*rng.normal(size=(6, 6))
-    noise = a@a.conj().T+np.eye(6)
-    b = DenseBackend()
-    ordinary = likelihood_batch(h, y, [.2, .3], make_whitener(noise, b), b)
-    robust = likelihood_batch(h, y, [.2, .3], make_whitener(noise+np.zeros((6, 6)), b), b)
-    for left, right in zip(ordinary, robust):
-        np.testing.assert_array_equal(left, right)
 
 
 def test_cpu_end_to_end_mmse_full_test_counts_and_resume(tmp_path):

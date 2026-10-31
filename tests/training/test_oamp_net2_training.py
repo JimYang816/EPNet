@@ -1,6 +1,7 @@
 """Fixed-split training, exact resume, inference boundaries and six-way reports."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import h5py
@@ -170,18 +171,36 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment)
     assert len(report["nmse"]["corrected_mean_nmse_db"]) == 2
     assert (root/"unified/report.html").is_file()
     assert replot(root/"unified")["curves"] == report["curves"]
+    with h5py.File(directory/"test.h5", "r+") as test:
+        test["samples/bits"][:] = 1-test["samples/bits"][:]
+    (directory/"train.h5").rename(directory/"unavailable-training.h5")
     from src.evaluation.icr_efficiency import benchmark, AVAILABLE_IDENTIFIERS
     efficiency = benchmark(directory/"test.h5", root/"unified/metrics.json", icr, udnet,
-        oamp_net2_checkpoint=oamp, batch_size=2, frame_limit=1, threads=2)
+        oamp_net2_checkpoint=oamp, batch_size=2, frame_limit=1, threads=2, output=root/"efficiency.json")
     rows = efficiency["algorithms"]
     assert {row["algorithm"] for row in rows} == set(AVAILABLE_IDENTIFIERS)
     assert len({row["process_id"] for row in rows}) == 6
     assert all(row["blocks"] == 4 for row in rows) and not efficiency["test_labels_read"]
+    assert all(row["setup_seconds"] > 0 and row["reconstruction_and_all_iterations_seconds"] > 0
+               and row["peak_process_rss_bytes"] > 0 for row in rows)
+    assert all(row["parameters"] == 0 for row in rows[:3])
+    assert all(row["parameters"] > 0 for row in rows[3:])
+    assert efficiency["reference_assisted_csi_construction"]
+    assert efficiency["initial_provenance_validation_seconds"] > 0
+    assert "train.h5" not in efficiency["data_identity"]
+    for row in rows:
+        assert row["setup_and_prediction_seconds"] == pytest.approx(
+            row["setup_seconds"] + row["reconstruction_and_all_iterations_seconds"])
+    assert json.loads((root/"efficiency.json").read_text(encoding="utf-8"))["input_view"] == "compensated"
     assert next(row for row in rows if row["algorithm"] == "mmse_pic")["detector_controls"]["iterations"] == 3
     assert next(row for row in rows if row["algorithm"] == "oamp_net2")["parameters"] == 12
     with pytest.raises(FileNotFoundError, match="Missing oamp_net2"):
         unified(directory/"test.h5", root/"missing", backend, checkpoints={"oamp_net2": root/"missing.pt"})
     assert not (root/"missing/metrics.json").exists()
+    wrong = dict(report, input_view="raw")
+    (root/"wrong.json").write_text(json.dumps(wrong), encoding="utf-8")
+    with pytest.raises(ValueError, match="compensated CSI comparison report"):
+        benchmark(directory/"test.h5", root/"wrong.json", icr, udnet, algorithms=("full_matrix_lmmse",))
 
 
 def test_record_leakage_and_smoke_checkpoint_are_rejected(experiment):

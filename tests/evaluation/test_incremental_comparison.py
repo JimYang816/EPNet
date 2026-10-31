@@ -90,9 +90,12 @@ def test_cross_directory_and_batch_thread_changes_reuse_without_computation(expe
 
 
 def test_comparison_needs_neither_retired_detectors_nor_training_data(experiment, monkeypatch):
-    for module in ("src.algorithms.ep.real", "src.algorithms.robust_ep.real"):
-        monkeypatch.setattr(importlib.import_module(module), "equalize_batch", forbid)
-    monkeypatch.setattr(importlib.import_module("src.evaluation.covariance"), "calibrate", forbid)
+    original_import = importlib.import_module
+    def current_import(name, *args, **kwargs):
+        if name in ("src.algorithms.ep.real", "src.algorithms.robust_ep.real", "src.evaluation.covariance"):
+            pytest.fail("Retired implementation imported: " + name)
+        return original_import(name, *args, **kwargs)
+    monkeypatch.setattr(importlib, "import_module", current_import)
     (experiment.data/"train.h5").rename(experiment.data/"unavailable-training.h5")
     report = experiment.run()
     assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE"}
@@ -113,9 +116,7 @@ def test_independent_source_edits_invalidate_only_the_owner(experiment, monkeypa
 
 @pytest.mark.parametrize("reference,before,after,expected", [
     ("src.algorithms.likelihood:likelihood_batch", "h = whitener @", "h = 1.0*whitener @", {"full_matrix_lmmse"}),
-    ("src.algorithms.likelihood:real_likelihood", "return (2*np.concatenate", "return (2.0*np.concatenate", set()),
     ("src.evaluation.inputs", "channel = reference+alpha*", "channel = reference+1.0*alpha*", {a.identifier for a in ALGORITHMS}),
-    ("src.evaluation.covariance", "covariance *= 1-shrinkage", "covariance *= 1.0-shrinkage", set()),
 ])
 def test_shared_computation_invalidates_only_actual_dependents(experiment, monkeypatch, reference, before, after, expected):
     experiment.run()

@@ -46,7 +46,8 @@ def test_selection_cannot_fall_through_to_test_when_csi_never_improves():
 
 
 @pytest.mark.parametrize("precision", ("complex64", "complex128"))
-def test_coverage_full_matrix_scoring_and_compensated_mmse_baselines(tmp_path, monkeypatch, precision):
+@pytest.mark.parametrize("detector_mode", ("unfolded", "budgeted"))
+def test_coverage_full_matrix_scoring_and_compensated_mmse_baselines(tmp_path, monkeypatch, precision, detector_mode):
     import torch
     from threadpoolctl import threadpool_limits
     from data_generation.tests.test_compact import fixture
@@ -68,7 +69,7 @@ def test_coverage_full_matrix_scoring_and_compensated_mmse_baselines(tmp_path, m
             generate(directory, generation, c, archive, chain, prior, DenseBackend(),
                      dict(commit="test", archive_sha256="test"))
             model = ICRMMSEnet(layers=2, bandwidth=2, window_size=6, center_size=3, hidden_size=4,
-                              precision=precision)
+                              precision=precision, detector_mode=detector_mode)
             checkpoint = tmp_path/"icr.pt"
             with CompactDataset(directory/"train.h5") as dataset:
                 atomic_save(checkpoint, dict(schema=SCHEMA, input_view="compensated", model_config=model.config,

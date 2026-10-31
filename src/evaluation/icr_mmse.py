@@ -213,11 +213,15 @@ def evaluate(dataset_path, checkpoint, run, backend, *, batch_size=2, frame_limi
     layers, while supervision/scoring and optional baseline runs are excluded.
     """
     from src.algorithms.icr_mmse.checkpoint import INFERENCE_CODE, load_model, validate_dataset
+    from src.algorithms.icr_mmse.inference import prepare_frozen_inference
     from src.algorithms.icr_mmse.model import csi_nmse
     run, checkpoint = Path(run), Path(checkpoint)
     run.mkdir(parents=True, exist_ok=True)
     with FileLock(run/".icr_evaluation.lock"):
         model, payload = load_model(checkpoint, backend.device)
+        prepare_frozen_inference(model)
+        deployment_code = (("src.algorithms.icr_mmse.inference",)
+                           if model.config["detector_mode"] == "budgeted" else ())
         precision = model.config["precision"]
         real_precision = "float32" if precision == "complex64" else "float64"
         checkpoint_hash = file_sha256(checkpoint)
@@ -247,7 +251,7 @@ def evaluate(dataset_path, checkpoint, run, backend, *, batch_size=2, frame_limi
                     inputs, keys = next(iterator)
                 except StopIteration:
                     break
-                output = model(**inputs)
+                output = model(**inputs, return_diagnostics=False)
                 backend.synchronize()
                 preprocessing_and_prediction += time.perf_counter()-tick
                 # This is the first access to references or labels for a batch.
@@ -286,7 +290,8 @@ def evaluate(dataset_path, checkpoint, run, backend, *, batch_size=2, frame_limi
                 model_config=payload["model_config"], feedback_layout=payload["feedback_layout"],
                 data_identity=guard.files,
                 effective_model_config=dict(model.config),
-                code=source_fingerprint(INFERENCE_CODE+("src.evaluation.icr_mmse",)),
+                code=source_fingerprint(INFERENCE_CODE+("src.evaluation.icr_mmse",)+deployment_code),
+                deployment="frozen scalar/window caches" if deployment_code else "checkpoint forward",
                 numerical_environment=dict(numerical_environment(backend),
                     precision=precision+"/"+real_precision), per_snr=per_snr,
                 selection=dict(ber=sum(row["bit_errors"][-1] for row in per_snr)/total_bits,

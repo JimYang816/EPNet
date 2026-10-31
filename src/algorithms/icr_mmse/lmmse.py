@@ -15,7 +15,8 @@ class FullMatrixLMMSELayer(nn.Module):
     def forward(self, channel, observations, known, mean, variance, data_mask, pilot_mask,
                 null_mask, positions, rf_variance, covariance_factor, constellation,
                 use_uncertainty=True, covariance_diagonal=None, column_weights=None,
-                base_column_energy=None, return_diagnostics=True):
+                base_column_energy=None, return_diagnostics=True,
+                previous_log_probabilities=None, return_log_probabilities=False):
         if torch.any(rf_variance <= 0):
             raise ValueError("Soft-output LMMSE requires positive RF noise variance")
         matrix = channel.dense()[..., data_mask]
@@ -53,4 +54,9 @@ class FullMatrixLMMSELayer(nn.Module):
         diagnostics = dict(pilot_cancelled=cancelled, linear_estimate=estimate,
                            posterior_variance=posterior_variance, gain=gain,
                            residual=observations - channel.matvec(mean)) if return_diagnostics else {}
-        return probabilities, next_mean, next_variance, diagnostics
+        result = probabilities, next_mean, next_variance, diagnostics
+        if return_log_probabilities:
+            logp = observations.real.new_zeros((*observations.shape, len(constellation)))
+            logp[:, data_mask] = logits.log_softmax(-1)
+            return (*result, logp)
+        return result

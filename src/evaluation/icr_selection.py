@@ -56,6 +56,7 @@ def match_once_budget(data_directory, checkpoint, backend, *, repeats=(1, 2, 3, 
     validation inputs only; labels and reference CSI are never loaded.
     """
     from src.algorithms.icr_mmse.checkpoint import load_model, validate_dataset
+    from src.algorithms.icr_mmse.inference import prepare_frozen_inference
     from src.data.compact import CompactDataset
     from src.data.icr_mmse import input_batches
     if not repeats or any(not isinstance(r, int) or r < 1 for r in repeats) or timing_repeats < 1:
@@ -63,6 +64,7 @@ def match_once_budget(data_directory, checkpoint, backend, *, repeats=(1, 2, 3, 
     if not 0 < tolerance < 1:
         raise ValueError("Budget tolerance must be between zero and one")
     model, payload = load_model(checkpoint, backend.device)
+    prepare_frozen_inference(model)
     precision = model.config["precision"]
     with CompactDataset(Path(data_directory)/"validation.h5", input_view="compensated") as dataset:
         # load_model already verifies checkpoint metadata; validation metadata is
@@ -72,7 +74,7 @@ def match_once_budget(data_directory, checkpoint, backend, *, repeats=(1, 2, 3, 
                                      frame_limit=1, precision=precision))
         def measure():
             with torch.inference_mode():
-                model(**first)
+                model(**first, return_diagnostics=False)
                 elapsed, count = [], 0
                 for _ in range(timing_repeats):
                     backend.synchronize()
@@ -80,7 +82,7 @@ def match_once_budget(data_directory, checkpoint, backend, *, repeats=(1, 2, 3, 
                     count = 0
                     for inputs, keys in input_batches(dataset, device=backend.device, batch_size=batch_size,
                                                      frame_limit=frame_limit, precision=precision):
-                        model(**inputs)
+                        model(**inputs, return_diagnostics=False)
                         count += len(keys)
                     backend.synchronize()
                     elapsed.append((time.perf_counter()-started)/count)
