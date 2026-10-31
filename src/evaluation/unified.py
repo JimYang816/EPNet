@@ -10,10 +10,11 @@ from src.data.compact import CompactDataset
 from src.evaluation import comparison
 from src.evaluation.comparison_plots import publish_report
 from src.evaluation.fingerprints import DataIdentity
+from src.evaluation.registry import SUPPORTED_CURVES
 from src.evaluation.result_cache import FileLock
 
 LEARNED = ("udnet", "oamp_net2", "icr_mmse")
-ORDER = ("Single-tap MMSE", "Full-matrix LMMSE", "MMSE-PIC", "UDNet", "OAMP-Net2", "ICR-MMSE-Net")
+ORDER = SUPPORTED_CURVES
 
 
 def _preflight(dataset_path, checkpoints, backend):

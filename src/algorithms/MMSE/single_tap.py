@@ -1,4 +1,4 @@
-"""Unit-energy single-tap MMSE on raw data-carrier observations."""
+"""Unit-energy single-tap LMMSE on raw data-carrier observations."""
 from __future__ import annotations
 
 import numpy as np

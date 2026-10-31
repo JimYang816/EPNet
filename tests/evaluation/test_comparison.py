@@ -23,7 +23,7 @@ def test_cpu_end_to_end_mmse_full_test_counts_and_resume(tmp_path):
         report = evaluate(data/"test.h5", run, DenseBackend(), batch_size=2, cache_dir=cache)
         assert report["complete"] and report["frame_count"] == 2
         assert report["bits_per_snr"] == 64
-        assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE"}
+        assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE"}
         assert "robust_covariance" not in report
         assert (run/"ber_snr.png").is_file()
         assert (run/"nmse_snr.png").is_file()

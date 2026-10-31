@@ -112,7 +112,7 @@ def test_label_free_inference_complete_evaluation_and_cache_reuse(experiment, mo
             assert result.symbols.shape == (2, len(ds._indices)) and np.isfinite(result.symbols).all()
     options = dict(batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_pic": {"iterations": 3}})
     report = evaluate(directory/"test.h5", checkpoint, root/"evaluation", backend, **options)
-    assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE", "MMSE-PIC", "OAMP-Net2"}
+    assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE", "MMSE-PIC", "OAMP-Net2"}
     assert report["bits_per_snr"] == 64
     assert report["oamp_net2"]["sha256"]
     assert (root/"evaluation/ber_snr.png").is_file() and (root/"evaluation/nmse_snr.png").is_file()
@@ -178,7 +178,7 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment,
         changed = unified(directory/"test.h5", root/"pic-only-change", backend, checkpoints=checkpoints,
             batch_size=1, cache_dir=root/"cache", algorithm_parameters={"mmse_pic": {"iterations": 4}}, bootstrap_samples=16)
     assert changed["icr_mmse"]["evaluation_cache"]["reused"]
-    for name in ("Single-tap MMSE", "Full-matrix LMMSE", "UDNet", "OAMP-Net2"):
+    for name in ("Single-tap LMMSE", "Full-matrix LMMSE", "UDNet", "OAMP-Net2"):
         assert changed["curves"][name]["provenance"]["reused"]
         assert changed["curves"][name]["errors"] == report["curves"][name]["errors"]
     assert changed["curves"]["MMSE-PIC"]["provenance"]["cache_key"] != report["curves"]["MMSE-PIC"]["provenance"]["cache_key"]

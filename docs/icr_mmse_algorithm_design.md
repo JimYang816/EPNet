@@ -2,7 +2,7 @@
 
 本文按当前实现同步：修正网络采用 `14(2B+1)+5` 通道反馈，均衡层采用带 CSI 加载和精确方向线搜索的残差展开，并进行局部 QPSK logits 校准。主配置为 `input_view="compensated"`、`complex64`、对角噪声权重；RTX 4080 的训练数据准备与 batch/cache 设置见 [运行说明](icr_mmse.md#6-验证与运行) 和 [训练性能历史基准](icr_mmse_training_performance.md)。
 
-默认联合展开8层，采用A/B/C三阶段训练。正式比较包括 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net，统一配置见 `configs/evaluation/ber_comparison.json`。论文主稿与图片位于 `outputs/paper/`。
+默认联合展开8层，采用A/B/C三阶段训练。正式比较包括 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net，统一配置见 `configs/evaluation/ber_comparison.json`。论文主稿与图片位于 `outputs/paper/`。
 
 ## 1. 研究背景
 
@@ -130,7 +130,7 @@ H_0^{(d)}=\widehat H^{(d)},\qquad d\in\{D1,D2\}.
 \tag{2}
 $$
 
-Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net 均使用同一已验收的 compensated CSI 及固定划分。SNR 0→30 dB 时，NOF1 平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB。raw 视图仅供显式诊断，不能复用其检查点、特征或评测缓存；六算法汇总见 [均衡算法对比](equalizer_comparison.md)。
+Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net 均使用同一已验收的 compensated CSI 及固定划分。SNR 0→30 dB 时，NOF1 平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB。raw 视图仅供显式诊断，不能复用其检查点、特征或评测缓存；六算法汇总见 [均衡算法对比](equalizer_comparison.md)。
 
 模型保留 $H_0$ 的全部耦合，不另行输入系数或参考投影，也不把完整估计矩阵重新投影到 DPSS 子空间。后续修正只改变既定带内元素；其恢复能力必须由实验检验，不能由“存在参考监督”直接推出。
 

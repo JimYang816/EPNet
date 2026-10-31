@@ -63,7 +63,7 @@ NOF1固定CSI相对未训练初始化没有显著学习收益，部分0 dB点仍
 
 ## 4. 六算法主比较
 
-比较 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和当前 ICR-MMSE-Net，配置为 `configs/evaluation/ber_comparison.json`。新汇总写到 `outputs/runs/equalizer_comparison_unified_20261031/`，运行方法见 [统一评测](equalizer_comparison.md)。
+比较 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和当前 ICR-MMSE-Net，配置为 `configs/evaluation/ber_comparison.json`。新汇总写到 `outputs/runs/equalizer_comparison_unified_20261031/`，运行方法见 [统一评测](equalizer_comparison.md)。
 
 ```bash
 python -m scripts.evaluate.compare --device cuda --threads 4

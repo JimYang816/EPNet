@@ -6,7 +6,7 @@
 
 - 数据生成已完成，后续所有均衡算法统一使用当前已验收的数据集及既定划分进行训练和测试。
 - 当前 ICR 算法使用统一8层残差 MMSE Unfolding：NOF1、NCS1 均学习逐层物理参数和局部神经校准网络，禁止按信道冻结神经分支。唯一训练配置为 `configs/training/icr_mmse.json`，允许各信道独立权重及验证确定的学习率/加载初值。当前设计见 `docs/icr_mmse_algorithm_design.md`。
-- 主对比包含 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net；EP、Robust EP 不再参与性能或效率对比。
+- 主对比包含 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net；EP、Robust EP 不再参与性能或效率对比。
 - 论文正式消融采用 A–D 四组：A＝固定 CSI + Full-matrix LMMSE，B＝固定 CSI + MMSE Unfolding，C＝迭代 CSI 修正 + Full-matrix LMMSE，D＝迭代 CSI 修正 + MMSE Unfolding（完整模型）。单次修正、去不确定度、去门控及等预算单次修正保留为补充诊断，不列入正文核心消融；定义与结果使用边界见 `docs/icr_mmse.md` 第5节。
 - 默认训练、验证、测试必须使用已验收的 **compensated CSI**：NOF1 平均 NMSE 随 SNR 0→30 dB 为 **−12.70→−18.30 dB**，NCS1 为 **−6.20→−10.67 dB**。未经用户明确要求，不得改为 raw CSI 或修改这些目标。raw 数据保留，仅供显式诊断；不得复用 raw 视图的训练检查点、特征或评测缓存。
 - `README.md` 仅保留项目简要说明及文件目录结构；未经用户明确允许，不得修改。

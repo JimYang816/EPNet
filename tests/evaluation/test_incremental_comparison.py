@@ -98,7 +98,7 @@ def test_comparison_needs_neither_retired_detectors_nor_training_data(experiment
     monkeypatch.setattr(importlib, "import_module", current_import)
     (experiment.data/"train.h5").rename(experiment.data/"unavailable-training.h5")
     report = experiment.run()
-    assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE"}
+    assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE"}
     assert set(report["data_identity"]) == {"test.h5", "model.h5"}
     assert "robust_covariance" not in report and "ep" not in report
     assert not (experiment.root/"cache/covariance").exists()
@@ -235,12 +235,12 @@ def test_corrupt_completed_block_is_recomputed_without_repeating_valid_blocks(ex
 
 def test_unreadable_cache_is_a_miss_and_lock_prevents_concurrent_writers(experiment, monkeypatch):
     original = experiment.run()
-    path = Path(original["curves"]["Single-tap MMSE"]["provenance"]["cache_file"])
+    path = Path(original["curves"]["Single-tap LMMSE"]["provenance"]["cache_file"])
     path.write_bytes(b"broken HDF5")
     calls = watch(monkeypatch)
     updated = experiment.run("repaired")
     assert changed(calls) == {"single_tap_mmse"}
-    assert updated["curves"]["Single-tap MMSE"]["errors"] == original["curves"]["Single-tap MMSE"]["errors"]
+    assert updated["curves"]["Single-tap LMMSE"]["errors"] == original["curves"]["Single-tap LMMSE"]["errors"]
     lock_path = path.parent/"entry.lock"
     with FileLock(lock_path):
         with pytest.raises(RuntimeError, match="in use"):
@@ -266,6 +266,32 @@ def test_plot_only_needs_neither_data_nor_backend_and_preserves_provenance(exper
     assert json.loads((experiment.root/"ncs1/metrics.json").read_text(encoding="utf-8")) == original
 
 
+def test_legacy_single_tap_name_replots_without_inference_or_lost_provenance(experiment, monkeypatch):
+    original = experiment.run()
+    historical = dict(original, schema="watermark-unified-comparison-v1")
+    historical["curves"] = {("Single-tap MMSE" if name == "Single-tap LMMSE" else name): curve
+                            for name, curve in original["curves"].items()}
+    historical["comparison_algorithms"] = list(historical["curves"])
+    run = experiment.root/"run"
+    (run/"metrics.json").write_text(json.dumps(historical), encoding="utf-8")
+    (run/"report.html").write_text("Single-tap MMSE", encoding="utf-8")
+    experiment.data.rename(experiment.root/"unavailable-data")
+    monkeypatch.setattr(comparison, "prepare_batch", forbid)
+    calls = watch(monkeypatch)
+    updated = replot(run)
+    assert not changed(calls)
+    assert updated["curves"] == original["curves"]
+    assert updated["comparison_algorithms"] == list(original["curves"])
+    for name in ("report_generation", "data_identity", "parameters", "nmse"):
+        assert updated[name] == original[name]
+    html = (run/"report.html").read_text(encoding="utf-8")
+    assert "Single-tap LMMSE" in html and "Single-tap MMSE" not in html
+    historical["curves"]["Single-tap LMMSE"] = original["curves"]["Single-tap LMMSE"]
+    (run/"metrics.json").write_text(json.dumps(historical), encoding="utf-8")
+    with pytest.raises(ValueError, match="Duplicate report curve"):
+        replot(run)
+
+
 def test_plot_only_removes_retired_curves_from_historical_reports(experiment, monkeypatch):
     original = experiment.run()
     historical = dict(original)
@@ -278,7 +304,7 @@ def test_plot_only_removes_retired_curves_from_historical_reports(experiment, mo
     experiment.data.rename(experiment.root/"unavailable-data")
     monkeypatch.setattr(comparison, "prepare_batch", forbid)
     updated = replot(experiment.root/"run")
-    assert set(updated["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE"}
+    assert set(updated["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE"}
     assert updated["parameters"] == original["parameters"]
     assert updated["report_generation"] == original["report_generation"]
     assert updated["nmse"] == original["nmse"]

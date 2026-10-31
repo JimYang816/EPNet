@@ -13,11 +13,12 @@ import numpy as np
 
 from src.common.experiment import write_json, file_sha256
 from src.evaluation.fingerprints import source_fingerprint
-from src.evaluation.registry import CURVES, SUPPORTED_CURVES
+from src.evaluation.registry import CURVES, SUPPORTED_CURVES, normalize_report_labels
 from src.evaluation.result_cache import FileLock
 
 
 def plot_ber(report, path):
+    report = normalize_report_labels(report)
     colors = ("#667085", "#2477b3", "#8b5cf6", "#df8028", "#15845b", "#b42a55")
     markers = ("o", "s", "P", "^", "D", "*")
     with plt.rc_context({"font.size": 11, "axes.spines.top": False, "axes.spines.right": False}):
@@ -65,6 +66,7 @@ def plot_nmse(report, path):
 
 
 def validate_report(report):
+    report = normalize_report_labels(report)
     names = set(report.get("curves", {}))
     if (not report.get("complete") or not set(CURVES).issubset(names)
             or names-set(SUPPORTED_CURVES)):
@@ -94,6 +96,9 @@ def validate_report(report):
 
 def publish_report(run, report, *, redraw_nmse=False):
     """Stage both figures and JSON; roll back replacements on publication errors."""
+    normalized = normalize_report_labels(report)
+    report.clear()
+    report.update(normalized)
     validate_report(report)
     run = Path(run)
     run.mkdir(parents=True, exist_ok=True)
@@ -151,4 +156,7 @@ def replot(run):
         for field in ("robust_covariance", "ep", "paper_doi", "rejected_sites"):
             report.pop(field, None)
     publish_report(run, report, redraw_nmse=True)
+    if report.get("schema") == "watermark-unified-comparison-v1":
+        from src.evaluation.unified import _write_html
+        _write_html(Path(run), report)
     return report

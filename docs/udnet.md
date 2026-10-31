@@ -117,7 +117,7 @@ python -m scripts.infer.udnet --checkpoint outputs/runs/udnet_compensated/nof1/b
 python -m scripts.run.udnet --device cuda --threads 4
 ```
 
-充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。统一入口 `python -m scripts.evaluate.compare --device cuda` 按当前配置汇总 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net 六种算法；添加 `--baselines-only` 运行三种传统方法。所需检查点与缓存控制见 [均衡算法对比](equalizer_comparison.md)。本页独立评测仍按 `configs/training/udnet.json` 输出下述三算法结果。
+充分统计量 NPZ 仅要求 `gram`、`matched`、`zf`、`data_mask`。统一入口 `python -m scripts.evaluate.compare --device cuda` 按当前配置汇总 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2 和 ICR-MMSE-Net 六种算法；添加 `--baselines-only` 运行三种传统方法。所需检查点与缓存控制见 [均衡算法对比](equalizer_comparison.md)。本页独立评测仍按 `configs/training/udnet.json` 输出下述三算法结果。
 
 独立评测调用相同输入视图下的两种 MMSE 基线评测器，由该评测器重新校验数据、输入构造、算法、评分、环境及 NMSE 依赖，检查每个缓存块的校验和；不再运行 EP、Robust EP 或读取其训练协方差。仅视图及依赖匹配的部分复用，不根据旧报告中的曲线直接认定缓存可用。UDNet 结果单独按输入视图、最佳模型 SHA256、输入/模型/评分代码和测试数据身份缓存，检查点也须通过输入视图校验。正式评测强制完整测试集全部 SNR、600 帧、D1/D2 和 512 数据槽，每 SNR 每算法 1,228,800 比特、UDNet 614,400 符号。
 

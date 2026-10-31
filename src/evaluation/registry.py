@@ -19,7 +19,7 @@ class Algorithm:
 MATRIX = ("src.algorithms.likelihood:make_whitener", "src.algorithms.likelihood:likelihood_batch",
           "src.algorithms.likelihood:batch_likelihood")
 ALGORITHMS = (
-    Algorithm("single_tap_mmse", "Single-tap MMSE", "src.algorithms.MMSE.single_tap"),
+    Algorithm("single_tap_mmse", "Single-tap LMMSE", "src.algorithms.MMSE.single_tap"),
     Algorithm("full_matrix_lmmse", "Full-matrix LMMSE", "src.algorithms.MMSE.full_matrix", MATRIX),
 )
 # Keep the original defaults for callers producing the historical two-MMSE
@@ -31,6 +31,21 @@ AVAILABLE_ALGORITHMS = ALGORITHMS+OPTIONAL_ALGORITHMS
 CURVES = tuple(a.label for a in ALGORITHMS)
 IDENTIFIERS = tuple(a.identifier for a in AVAILABLE_ALGORITHMS)
 SUPPORTED_CURVES = tuple(a.label for a in AVAILABLE_ALGORITHMS)+("UDNet", "OAMP-Net2", "ICR-MMSE-Net")
+
+
+def normalize_report_labels(report):
+    """Translate historical display names without changing numerical provenance."""
+    aliases = {"Single-tap MMSE": ALGORITHMS[0].label}
+    curves = {}
+    for name, curve in report.get("curves", {}).items():
+        label = aliases.get(name, name)
+        if label in curves:
+            raise ValueError(f"Duplicate report curve after label normalization: {label}")
+        curves[label] = curve
+    normalized = dict(report, curves=curves)
+    if "comparison_algorithms" in report:
+        normalized["comparison_algorithms"] = [aliases.get(name, name) for name in report["comparison_algorithms"]]
+    return normalized
 
 
 def resolve_parameters(algorithm_parameters=None):

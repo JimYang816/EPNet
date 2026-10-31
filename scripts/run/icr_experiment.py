@@ -16,12 +16,13 @@ import subprocess
 import sys
 
 from src.common.experiment import file_sha256, write_json
+from src.evaluation.registry import SUPPORTED_CURVES, normalize_report_labels
 from src.evaluation.result_cache import FileLock
 from src.training.icr_workflow import DEFAULT_CONFIG, STAGES, resolve_config
 
 LOG = logging.getLogger(__name__)
 SNR = [0, 5, 10, 15, 20, 25, 30]
-LABELS = ("Single-tap MMSE", "Full-matrix LMMSE", "MMSE-PIC", "UDNet", "OAMP-Net2", "ICR-MMSE-Net")
+LABELS = SUPPORTED_CURVES
 
 
 def comparison_config(training, comparison, output):
@@ -64,6 +65,7 @@ def preflight(training, comparison):
 
 def validate_report(report, channel):
     """Do not declare success for partial coverage or historical ICR weights."""
+    report = normalize_report_labels(report)
     if (not report.get("complete") or report.get("smoke") or report.get("input_view") != "compensated"
             or report.get("channel") != channel or report.get("snr_db") != SNR
             or set(report.get("curves", {})) != set(LABELS)):

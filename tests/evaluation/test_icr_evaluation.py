@@ -121,7 +121,7 @@ def test_coverage_full_matrix_scoring_and_compensated_mmse_baselines(tmp_path, m
             report = scoring.evaluate(directory/"test.h5", checkpoint, tmp_path/"evaluation", DenseBackend(),
                 batch_size=2, include_baselines=True, bootstrap_samples=16,
                 cache_dir=tmp_path/"cache")
-            assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE", "ICR-MMSE-Net"}
+            assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE", "ICR-MMSE-Net"}
             assert report["input_view"] == "compensated"
             assert observed
             assert report["effective_model_config"]["precision"] == precision

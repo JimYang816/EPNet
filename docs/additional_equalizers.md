@@ -1,6 +1,6 @@
 # OAMP-Net2、MMSE-PIC 与六算法统一评测
 
-本页同步 2026-10-30 的训练、评测配置和诊断入口。主对比为 Single-tap MMSE、Full-matrix LMMSE、
+本页同步 2026-10-30 的训练、评测配置和诊断入口。主对比为 Single-tap LMMSE、Full-matrix LMMSE、
 MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net。保持已验收数据文件、物理记录划分、
 compensated CSI、导频、接收观测、QPSK 映射及 BER 定义不变。
 NOF1 的输入平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB，SNR 0→30 dB。

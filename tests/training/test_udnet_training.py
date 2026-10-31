@@ -105,7 +105,7 @@ def test_independent_evaluation_and_inference_never_read_labels(experiment, monk
             assert result.symbols.shape == (1, len(ds._indices))
     # Both independently validated MMSE baselines and shared NMSE are present.
     report = evaluate(directory/"test.h5", best, root/"report", backend, cache_dir=root/"cache")
-    assert set(report["curves"]) == {"Single-tap MMSE", "Full-matrix LMMSE", "UDNet"}
+    assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE", "UDNet"}
     assert report["curves"]["UDNet"]["total_symbols"] == [report["bits_per_snr"]//2]*2
     for name in ("ber_snr.png", "nmse_snr.png", "ser_snr.png", "training_curves.png", "report.html"):
         assert (root/"report"/name).exists()

@@ -1,6 +1,6 @@
 # NOF1 / NCS1 六算法统一评测
 
-当前主比较固定为 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net。统一入口为 `scripts.evaluate.compare`，配置为 `configs/evaluation/ber_comparison.json`。ICR 默认采用8层联合 CSI 修正与 MMSE 展开，模型与训练参数见 [ICR 说明](icr_mmse.md) 和 [算法设计](icr_mmse_algorithm_design.md)；OAMP-Net2 与 MMSE-PIC 的实现依据见 [对比算法说明](additional_equalizers.md)。
+当前主比较固定为 Single-tap LMMSE、Full-matrix LMMSE、MMSE-PIC、UDNet、OAMP-Net2、ICR-MMSE-Net。统一入口为 `scripts.evaluate.compare`，配置为 `configs/evaluation/ber_comparison.json`。ICR 默认采用8层联合 CSI 修正与 MMSE 展开，模型与训练参数见 [ICR 说明](icr_mmse.md) 和 [算法设计](icr_mmse_algorithm_design.md)；OAMP-Net2 与 MMSE-PIC 的实现依据见 [对比算法说明](additional_equalizers.md)。
 
 ## 数据与指标
 
@@ -16,7 +16,7 @@ compensated CSI 按已保存的 alpha 构造 `H_init=H_ref+alpha*(H_raw-H_ref)`�
 
 | 算法 | 当前配置 | 实现 |
 |---|---|---|
-| Single-tap MMSE | 无额外参数 | `src/algorithms/MMSE/single_tap.py` |
+| Single-tap LMMSE | 无额外参数 | `src/algorithms/MMSE/single_tap.py` |
 | Full-matrix LMMSE | 完整矩阵、完整热噪声协方差 | `src/algorithms/MMSE/full_matrix.py` |
 | MMSE-PIC | 10轮，阻尼0.5，方差下限1e-10 | `src/algorithms/mmse_pic/detector.py` |
 | UDNet | 22层，窗口32，隐藏维度48 | `src/algorithms/udnet/` |
