@@ -45,13 +45,14 @@ def evaluate(dataset_path, run, backend, *, checkpoints=None, batch_size=8, cach
     if input_view != "compensated":
         raise ValueError("Unified experiment requires compensated CSI")
     checkpoints = dict(checkpoints or {})
+    forced = {force} if isinstance(force, str) else set(force)
     smoke = _preflight(dataset_path, checkpoints, backend)
     run = Path(run)
     run.mkdir(parents=True, exist_ok=True)
     with FileLock(run/".unified_evaluation.lock"):
         guard = DataIdentity({name: Path(dataset_path).parent/name for name in ("test.h5", "model.h5")})
         baseline = comparison.evaluate(dataset_path, run/"baselines", backend, batch_size=batch_size,
-            cache_dir=cache_dir, algorithm_parameters=algorithm_parameters, force=force, input_view=input_view)
+            cache_dir=cache_dir, algorithm_parameters=algorithm_parameters, force=forced-{"icr_mmse"}, input_view=input_view)
         report = dict(baseline, schema="watermark-unified-comparison-v1", smoke=smoke, curves=dict(baseline["curves"]))
         components = {}
         if "udnet" in checkpoints:
@@ -64,18 +65,20 @@ def evaluate(dataset_path, run, backend, *, checkpoints=None, batch_size=8, cach
             from src.evaluation.oamp_net2 import evaluate as evaluate_oamp
             components["oamp_net2"] = evaluate_oamp(dataset_path, checkpoints["oamp_net2"], run/"oamp_net2", backend,
                 batch_size=batch_size, cache_dir=cache_dir, algorithm_parameters=algorithm_parameters,
-                force="all" in force)
+                force="all" in forced)
             report["curves"]["OAMP-Net2"] = components["oamp_net2"]["curves"]["OAMP-Net2"]
             report["oamp_net2"] = components["oamp_net2"]["oamp_net2"]
         if "icr_mmse" in checkpoints:
-            from src.evaluation.icr_mmse import evaluate as evaluate_icr
+            from src.evaluation.icr_cache import evaluate as evaluate_icr
             components["icr_mmse"] = evaluate_icr(dataset_path, checkpoints["icr_mmse"], run/"icr_mmse", backend,
-                batch_size=batch_size, cache_dir=cache_dir, bootstrap_samples=bootstrap_samples)
+                batch_size=batch_size, cache_dir=cache_dir, bootstrap_samples=bootstrap_samples,
+                force=bool(forced.intersection(("icr_mmse", "all"))))
             icr = components["icr_mmse"]
             report["curves"]["ICR-MMSE-Net"] = icr["curves"]["ICR-MMSE-Net"]
             report["nmse"] = dict(baseline["nmse"], corrected_mean_nmse_db=[r["mean_nmse_db"][-1] for r in icr["per_snr"]])
             report["icr_mmse"] = dict(checkpoint=icr["checkpoint"], sha256=icr["checkpoint_sha256"],
-                model_config=icr["model_config"], comparison_report=str((run/"icr_mmse/metrics.json").resolve()))
+                model_config=icr["model_config"], comparison_report=str((run/"icr_mmse/metrics.json").resolve()),
+                evaluation_cache=icr["evaluation_cache"])
         for name, component in components.items():
             component_data = {key: component["data_identity"].get(key) for key in guard.files}
             if (component_data != guard.files or component["snr_db"] != baseline["snr_db"]

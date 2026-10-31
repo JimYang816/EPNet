@@ -13,14 +13,14 @@
   },
   "checkpoints": {
     "NOF1": {
-      "udnet": "outputs/runs/udnet_compensated/nof1/best.pt",
+      "udnet": "outputs/runs/icr_full_20261031_095549/udnet/nof1/best.pt",
       "oamp_net2": "outputs/runs/oamp_net2_compensated/nof1/best.pt",
-      "icr_mmse": "outputs/runs/icr_budgeted_unified_20261031/joint_training/nof1/icr_mmse.pt"
+      "icr_mmse": "outputs/runs/icr_full_20261031_095549/joint/nof1/icr_mmse.pt"
     },
     "NCS1": {
-      "udnet": "outputs/runs/udnet_compensated/ncs1/best.pt",
+      "udnet": "outputs/runs/icr_full_20261031_095549/udnet/ncs1/best.pt",
       "oamp_net2": "outputs/runs/oamp_net2_compensated/ncs1/best.pt",
-      "icr_mmse": "outputs/runs/icr_budgeted_20261031/joint_training/ncs1/icr_mmse.pt"
+      "icr_mmse": "outputs/runs/icr_full_20261031_095549/joint/ncs1/icr_mmse.pt"
     }
   }
 }

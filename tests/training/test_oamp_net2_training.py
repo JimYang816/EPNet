@@ -144,7 +144,7 @@ def test_pic_addition_and_parameter_change_preserve_existing_mmse_caches(experim
         resolve_parameters({"mmse_pic": {"unknown": 1}})
 
 
-def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment):
+def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
     from src.algorithms.icr_mmse.checkpoint import SCHEMA, FEEDBACK_LAYOUT, INFERENCE_CODE, atomic_save, cpu_state
     from src.algorithms.icr_mmse.model import ICRMMSEnet
     from src.training.udnet import train as train_udnet
@@ -171,6 +171,17 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment)
     assert len(report["nmse"]["corrected_mean_nmse_db"]) == 2
     assert (root/"unified/report.html").is_file()
     assert replot(root/"unified")["curves"] == report["curves"]
+    with monkeypatch.context() as scope:
+        scope.setattr("src.evaluation.icr_mmse.evaluate", lambda *a, **kw: pytest.fail("Unchanged ICR recomputed"))
+        scope.setattr("src.evaluation.udnet.equalize_batch", lambda *a, **kw: pytest.fail("Unchanged UDNet recomputed"))
+        scope.setattr("src.evaluation.oamp_net2.equalize_batch", lambda *a, **kw: pytest.fail("Unchanged OAMP recomputed"))
+        changed = unified(directory/"test.h5", root/"pic-only-change", backend, checkpoints=checkpoints,
+            batch_size=1, cache_dir=root/"cache", algorithm_parameters={"mmse_pic": {"iterations": 4}}, bootstrap_samples=16)
+    assert changed["icr_mmse"]["evaluation_cache"]["reused"]
+    for name in ("Single-tap MMSE", "Full-matrix LMMSE", "UDNet", "OAMP-Net2"):
+        assert changed["curves"][name]["provenance"]["reused"]
+        assert changed["curves"][name]["errors"] == report["curves"][name]["errors"]
+    assert changed["curves"]["MMSE-PIC"]["provenance"]["cache_key"] != report["curves"]["MMSE-PIC"]["provenance"]["cache_key"]
     with h5py.File(directory/"test.h5", "r+") as test:
         test["samples/bits"][:] = 1-test["samples/bits"][:]
     (directory/"train.h5").rename(directory/"unavailable-training.h5")

@@ -23,12 +23,14 @@ def main():
     parser.add_argument("--baselines-only", action="store_true", help="Run MMSE baselines and MMSE-PIC without learned checkpoints")
     parser.add_argument("--input-view", choices=("raw", "compensated"))
     modes = parser.add_mutually_exclusive_group()
-    modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "all"), default=[],
-                       help="Recompute selected traditional detectors; all also refreshes OAMP-Net2")
+    modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "icr_mmse", "all"), default=[],
+                       help="Recompute selected detectors; all also refreshes OAMP-Net2 and ICR")
     modes.add_argument("--plot-only", action="store_true", help="Redraw saved complete reports without data or GPU")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    if args.baselines_only and "icr_mmse" in args.force:
+        parser.error("--force icr_mmse requires learned checkpoints")
     if args.plot_only:
         for channel in config["datasets"]:
             if not args.channel or channel == args.channel:
