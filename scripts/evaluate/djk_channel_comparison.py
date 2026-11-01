@@ -248,7 +248,12 @@ def compare(out):
         manifest[ch]=json.loads((out/f"{ch}_manifest.json").read_text(encoding="utf-8"))
         h=raw[ch]["responses"]
         metrics,p=multipath_metrics(raw[ch]["peak_registered"])
-        pdps[ch]=p.mean(axis=(0,1))
+        # Plot the unthresholded response so a thresholded-out weak tail is
+        # not visually presented as an absent physical path.
+        use=(DELAY_MS>=-5)&(DELAY_MS<=25)
+        display_power=abs(raw[ch]["peak_registered"][...,use])**2
+        display_power/=display_power.sum(axis=-1,keepdims=True)
+        pdps[ch]=display_power.mean(axis=(0,1))
         cluster=[g.get("record",g["group_id"]) for g in manifest[ch]["groups"]]
         results={k:dict(distribution=quantiles(v.ravel()),
                         cluster_summary=cluster_bootstrap(v.mean(axis=1),cluster)) for k,v in metrics.items()}
@@ -278,8 +283,24 @@ def compare(out):
         "The -30 dB relative response-power cutoff is shared; -20/-25/-35 dB and 15/30 ms window sensitivity results are also retained.",
         "The nine DJK bursts are from one campaign, not nine independent environments. Bootstrap intervals are descriptive cluster variability, not deployment-wide confidence.",
         "No equalizer, BER, decoder, FER, or true-CSI NMSE has been evaluated."]
+    _,unit_probe=probe()
+    unit_y=np.pad(unit_probe,(240,240))
+    unit_c,unit_p,_=matched_observation(unit_y,240,search_before=0,search_after=.003)
+    _,unit_h,_=register_burst([unit_c,unit_c],[unit_p,unit_p],[0.,.75],0,"unit impulse",24000)
+    unit_metrics,_=multipath_metrics(unit_h)
+    rankings={key:sorted(CHANNELS,key=lambda ch:summary[ch][key]["distribution"]["median"],
+                         reverse="correlation" in key) for key in
+              ["windowed_rms_delay_ms","energy_outside_main_1ms_fraction","shape_correlation_0.75s"]}
+    rms_order_all=all(summary["DJK"]["sensitivity"][i]["medians"]["windowed_rms_delay_ms"] <
+                      summary["NOF1"]["sensitivity"][i]["medians"]["windowed_rms_delay_ms"] <
+                      summary["NCS1"]["sensitivity"][i]["medians"]["windowed_rms_delay_ms"] for i in range(12))
     report=dict(schema="djk-common-probe-channel-comparison-v1",parameters=manifest["DJK"]["parameters"],
-                channels=summary,limitations=limitations,**provenance())
+                channels=summary,limitations=limitations,
+                ideal_single_path_instrument_response={k:float(v[0]) for k,v in unit_metrics.items()},
+                median_order_less_dispersion_or_higher_stability_first=rankings,
+                rms_order_djk_nof1_ncs1_in_all_12_sensitivity_settings=rms_order_all,
+                extraction_provenance={ch:{k:manifest[ch][k] for k in ["code_sha256","git_head"]} for ch in CHANNELS},
+                **provenance())
     save_json(out/"comparison.json",report)
     fig,axes=plt.subplots(1,3,figsize=(12,3.6),constrained_layout=True)
     delay=DELAY_MS[(DELAY_MS>=-5)&(DELAY_MS<=25)]
@@ -297,6 +318,7 @@ def compare(out):
     for ax in axes:
         ax.grid(alpha=.2);ax.legend(fontsize=8)
     fig.suptitle("Common 6-kHz / 50-ms LFM analysis | no equalizer evaluation",fontsize=12)
+    fig.supxlabel("Delay metrics: -5 to 25 ms, -30 dB cutoff. Shape correlation: common gain, phase and timing shifts removed.",fontsize=9)
     fig.savefig(out/"common_probe_comparison.png",dpi=220)
     fig.savefig(out/"common_probe_comparison.svg")
     plt.close(fig)
