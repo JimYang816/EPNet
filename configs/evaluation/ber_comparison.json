@@ -3,13 +3,14 @@
     "NOF1": "data/processed/nof1_compact_20261026_final/test.h5",
     "NCS1": "data/processed/ncs1_compact_20261026_nmse/test.h5"
   },
-  "output": "outputs/runs/equalizer_comparison_six",
+  "output": "outputs/runs/equalizer_comparison_dd_ce_20261102",
   "input_view": "compensated",
   "batch_size": 8,
   "algorithms": {
     "single_tap_mmse": {},
     "full_matrix_lmmse": {},
-    "mmse_dfe": {}
+    "mmse_dfe": {},
+    "dd_ce_lmmse": {"rank": 32, "prior_scale": 0.03}
   },
   "checkpoints": {
     "NOF1": {

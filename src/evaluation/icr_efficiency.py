@@ -80,7 +80,7 @@ def _worker(options):
             if identifier == "udnet":
                 preprocessor = LocalPreprocessor(WindowPlan.build(dataset._config["nfft"], dataset._indices),
                                                  covariance, device)
-        if identifier in ("full_matrix_lmmse", "mmse_dfe", "oamp_net2"):
+        if identifier in ("full_matrix_lmmse", "mmse_dfe", "dd_ce_lmmse", "oamp_net2"):
             from src.algorithms.likelihood import make_whitener
             thermal = make_whitener(covariance, backend)
         algorithm = next((a for a in AVAILABLE_ALGORITHMS if a.identifier == identifier), None)
@@ -88,6 +88,9 @@ def _worker(options):
             importlib.import_module(algorithm.module)
             supplied = options["comparison"].get("baselines", options["comparison"]).get("parameters", {})
             parameters = resolve_parameters({identifier: supplied.get(identifier, {})})[identifier]
+            if identifier == "dd_ce_lmmse":
+                from src.evaluation.dd_ce import receiver_context
+                dd_context = receiver_context(dataset, backend, parameters)
         backend.synchronize()
         setup_seconds = time.perf_counter() - started
         prediction_seconds, blocks = 0., 0
@@ -124,7 +127,8 @@ def _worker(options):
                             result = equalize_batch(batch, backend, model=model, whitener=thermal)
                         else:
                             extra = {} if identifier == "single_tap_mmse" else dict(whitener=thermal)
-                            result = algorithm.equalize(batch, backend, **extra, **parameters)
+                            controls = dd_context[d] if identifier == "dd_ce_lmmse" else parameters
+                            result = algorithm.equalize(batch, backend, **extra, **controls)
                         if not np.isfinite(result.symbols).all():
                             raise FloatingPointError("Nonfinite detector output")
                         backend.synchronize()

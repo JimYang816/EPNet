@@ -100,7 +100,8 @@ def evaluate(dataset_path, run, backend, *, checkpoints=None, batch_size=8, cach
         report["curves"] = {name: report["curves"][name] for name in ORDER if name in report["curves"]}
         report["comparison_algorithms"] = list(report["curves"])
         report["checkpoint_paths"] = {name: str(Path(path).resolve()) for name, path in checkpoints.items()}
-        report["nmse"]["semantics"] = "Shared fixed input CSI; only ICR-MMSE-Net has a corrected CSI curve"
+        report["nmse"]["semantics"] = ("Shared input CSI. dd_mean_nmse_db and corrected_mean_nmse_db, "
+            "when present, score the full corrected CSI of DD-CE and ICR-MMSE-Net respectively.")
         guard.assert_unchanged()
         publish_report(run, report)
         _write_html(run, report)
@@ -115,6 +116,6 @@ def _write_html(run, report):
 <style>body{{font:16px/1.7 system-ui;max-width:1100px;margin:32px auto;padding:0 20px}}img{{max-width:100%}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd5dc;padding:8px}}</style>
 <h1>{report['channel']}：统一均衡评测</h1><p>固定测试划分、compensated CSI、D1/D2，共 {report['bits_per_snr']:,} 比特 / SNR。模型选择仅使用训练集和验证集。</p>
 <table><tr><th>算法 BER</th>{headings}</tr>{rows}</table><img src="ber_snr.png"><img src="nmse_snr.png">
-<p>零误码用空心三角在 0.5 / 测试比特数处显示。输入 CSI 的 NMSE 为逐帧、逐 D 全矩阵线性相对误差先平均再转 dB；ICR 单独报告修正后的 CSI。</p>
+<p>零误码用空心三角在 0.5 / 测试比特数处显示。输入与各算法修正后的 CSI 均按逐帧、逐 D 的完整矩阵线性相对误差先平均，再转为 dB。</p>
 <p>检查点、数据、代码与缓存来源见 metrics.json。</p></html>'''
     (run/"report.html").write_text(body, encoding="utf-8")

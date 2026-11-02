@@ -125,7 +125,7 @@ def test_label_free_inference_complete_evaluation_and_cache_reuse(experiment, mo
         evaluate(directory/"validation.h5", checkpoint, root/"invalid-split", backend)
 
 
-def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
+def test_unified_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
     from src.algorithms.icr_mmse.checkpoint import SCHEMA, FEEDBACK_LAYOUT, INFERENCE_CODE, atomic_save, cpu_state
     from src.algorithms.icr_mmse.model import ICRMMSEnet
     from src.training.udnet import train as train_udnet
@@ -145,11 +145,12 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment,
             data_indices=dataset._indices.tolist(), snr_db=dataset.snr_db.tolist()))
     checkpoints = dict(udnet=udnet, oamp_net2=oamp, icr_mmse=icr)
     report = unified(directory/"test.h5", root/"unified", backend, checkpoints=checkpoints,
-        batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}}, bootstrap_samples=16)
+        batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}, "dd_ce_lmmse": {}}, bootstrap_samples=16)
     assert tuple(report["curves"]) == ORDER
     assert all(curve["total_bits"] == [64, 64] for curve in report["curves"].values())
     assert report["input_view"] == "compensated"
     assert len(report["nmse"]["corrected_mean_nmse_db"]) == 2
+    assert len(report["nmse"]["dd_mean_nmse_db"]) == 2
     assert (root/"unified/report.html").is_file()
     assert replot(root/"unified")["curves"] == report["curves"]
     with monkeypatch.context() as scope:
@@ -171,11 +172,11 @@ def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment,
         oamp_net2_checkpoint=oamp, batch_size=2, frame_limit=1, threads=2, output=root/"efficiency.json")
     rows = efficiency["algorithms"]
     assert {row["algorithm"] for row in rows} == set(AVAILABLE_IDENTIFIERS)
-    assert len({row["process_id"] for row in rows}) == 6
+    assert len({row["process_id"] for row in rows}) == len(AVAILABLE_IDENTIFIERS)
     assert all(row["blocks"] == 4 for row in rows) and not efficiency["test_labels_read"]
     assert all(row["setup_seconds"] > 0 and row["reconstruction_and_all_iterations_seconds"] > 0
                and row["peak_process_rss_bytes"] > 0 for row in rows)
-    assert {row["algorithm"] for row in rows if row["parameters"] == 0} == {"single_tap_mmse", "full_matrix_lmmse", "mmse_dfe"}
+    assert {row["algorithm"] for row in rows if row["parameters"] == 0} == {"single_tap_mmse", "full_matrix_lmmse", "mmse_dfe", "dd_ce_lmmse"}
     assert {row["algorithm"] for row in rows if row["parameters"] > 0} == {"udnet", "oamp_net2", "icr_mmse"}
     assert efficiency["reference_assisted_csi_construction"]
     assert efficiency["initial_provenance_validation_seconds"] > 0

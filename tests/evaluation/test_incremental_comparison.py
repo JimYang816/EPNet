@@ -128,7 +128,28 @@ def test_dfe_addition_reuses_existing_detectors_and_supports_selective_force(exp
         experiment.run("raw-dfe", algorithm_parameters={"mmse_dfe": {}}, input_view="raw")
 
 
-def test_ber_figure_draws_all_six_curves_with_stable_styles(tmp_path, monkeypatch):
+def test_dd_ce_cache_preserves_paired_metrics_and_skips_inference(experiment, monkeypatch):
+    original = experiment.run()
+    parameters = {"dd_ce_lmmse": {"rank": 3, "prior_scale": 0.03}}
+    extended = experiment.run("dd", algorithm_parameters=parameters)
+    curve = extended["curves"]["DD-CE + Full-matrix LMMSE"]
+    assert curve["total_bits"] == original["curves"]["Full-matrix LMMSE"]["total_bits"]
+    assert extended["curves"]["Full-matrix LMMSE"]["provenance"]["reused"]
+    with h5py.File(curve["provenance"]["cache_file"]) as cache:
+        assert np.all(cache["complete"][:])
+        expected = 10*np.log10(cache["corrected_nmse"][:].mean(axis=(1, 2)))
+    np.testing.assert_allclose(extended["nmse"]["dd_mean_nmse_db"], expected)
+    assert not np.allclose(expected, extended["nmse"]["mean_nmse_db"])
+    with monkeypatch.context() as scope:
+        scope.setattr(comparison, "receiver_context", forbid)
+        cached = experiment.run("dd-cached", algorithm_parameters=parameters)
+        assert cached["curves"]["DD-CE + Full-matrix LMMSE"]["provenance"]["reused"]
+        assert cached["nmse"]["dd_mean_nmse_db"] == extended["nmse"]["dd_mean_nmse_db"]
+    with pytest.raises(ValueError, match="compensated CSI"):
+        experiment.run("raw-dd", algorithm_parameters=parameters, input_view="raw")
+
+
+def test_ber_figure_draws_all_curves_with_stable_styles(tmp_path, monkeypatch):
     from matplotlib.figure import Figure
     from src.evaluation.comparison_plots import plot_ber
     from src.evaluation.registry import SUPPORTED_CURVES
@@ -144,7 +165,7 @@ def test_ber_figure_draws_all_six_curves_with_stable_styles(tmp_path, monkeypatc
                   curves={name: dict(ber=[.1, .01], total_bits=[1228800]*2) for name in SUPPORTED_CURVES})
     plot_ber(report, tmp_path/"six.png")
     assert tuple(captured[-1]) == SUPPORTED_CURVES
-    assert len(set(captured[-1].values())) == 6
+    assert len(set(captured[-1].values())) == len(SUPPORTED_CURVES)
     styles = captured[-1]
     report["curves"] = {name: report["curves"][name] for name in reversed(SUPPORTED_CURVES) if name != "MMSE-DFE"}
     plot_ber(report, tmp_path/"historical.png")

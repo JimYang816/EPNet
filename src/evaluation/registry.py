@@ -23,9 +23,11 @@ ALGORITHMS = (
     Algorithm("full_matrix_lmmse", "Full-matrix LMMSE", "src.algorithms.MMSE.full_matrix", MATRIX),
 )
 # Keep the original defaults for callers producing the historical two-MMSE
-# report. The unified experiment explicitly opts into MMSE-DFE.
+# report. The unified experiment explicitly enables the other baselines.
 OPTIONAL_ALGORITHMS = (
     Algorithm("mmse_dfe", "MMSE-DFE", "src.algorithms.mmse_dfe.detector", MATRIX),
+    Algorithm("dd_ce_lmmse", "DD-CE + Full-matrix LMMSE", "src.algorithms.dd_ce_lmmse.detector",
+              MATRIX+("src.algorithms.MMSE.full_matrix", "src.evaluation.dd_ce")),
 )
 AVAILABLE_ALGORITHMS = ALGORITHMS+OPTIONAL_ALGORITHMS
 CURVES = tuple(a.label for a in ALGORITHMS)
@@ -57,9 +59,17 @@ def resolve_parameters(algorithm_parameters=None):
         if algorithm in OPTIONAL_ALGORITHMS and algorithm.identifier not in supplied:
             continue
         override = supplied.get(algorithm.identifier, {})
-        if not isinstance(override, dict) or override:
+        if not isinstance(override, dict):
             raise ValueError(f"Invalid parameters for {algorithm.identifier}")
-        result[algorithm.identifier] = {}
+        if algorithm.identifier == "dd_ce_lmmse":
+            from src.algorithms.dd_ce_lmmse.detector import controls
+            if set(override)-{"rank", "prior_scale"}:
+                raise ValueError("Invalid parameters for dd_ce_lmmse")
+            result[algorithm.identifier] = controls(**override)
+        elif override:
+            raise ValueError(f"Invalid parameters for {algorithm.identifier}")
+        else:
+            result[algorithm.identifier] = {}
     return result
 
 

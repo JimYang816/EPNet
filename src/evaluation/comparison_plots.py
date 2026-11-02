@@ -19,8 +19,8 @@ from src.evaluation.result_cache import FileLock
 
 def plot_ber(report, path):
     report = normalize_report_labels(report)
-    colors = ("#667085", "#2477b3", "#0097a7", "#df8028", "#15845b", "#b42a55")
-    markers = ("o", "s", "X", "^", "D", "*")
+    colors = ("#667085", "#2477b3", "#0097a7", "#8052aa", "#df8028", "#15845b", "#b42a55")
+    markers = ("o", "s", "X", "P", "^", "D", "*")
     styles = dict(zip(SUPPORTED_CURVES, zip(colors, markers)))
     with plt.rc_context({"font.size": 11, "axes.spines.top": False, "axes.spines.right": False}):
         fig, ax = plt.subplots(figsize=(7.5, 5.2))
@@ -29,7 +29,8 @@ def plot_ber(report, path):
             color, marker = styles[name]
             ber, bits = np.array(values["ber"]), np.array(values["total_bits"])
             ax.semilogy(report["snr_db"], np.where(ber > 0, ber, np.nan), color=color,
-                        marker=marker, markersize=6, linewidth=1.8, label=name)
+                        marker=marker, markersize=6, linewidth=1.8,
+                        label="CRU-Net" if name == "ICR-MMSE-Net" else name)
             zero = ber == 0
             if np.any(zero):
                 zero_seen = True
@@ -54,9 +55,11 @@ def plot_ber(report, path):
 def plot_nmse(report, path):
     fig, ax = plt.subplots(figsize=(6.4, 4.2), layout="constrained")
     ax.plot(report["snr_db"], report["nmse"]["mean_nmse_db"], "o-", color="#2477b3", label="Test CSI")
+    if "dd_mean_nmse_db" in report["nmse"]:
+        ax.plot(report["snr_db"], report["nmse"]["dd_mean_nmse_db"], "P--", color="#8052aa", label="DD-CE corrected CSI")
     if "corrected_mean_nmse_db" in report["nmse"]:
         ax.plot(report["snr_db"], report["nmse"]["corrected_mean_nmse_db"], "s-",
-                color="#b42a55", label="ICR-MMSE-Net corrected CSI")
+                color="#b42a55", label="CRU-Net corrected CSI")
     ax.set(xlabel="SNR (dB)", ylabel="Mean NMSE (dB)",
            title=f'{report["channel"]} | Test set | mean(linear per-D NMSE)')
     ax.set_xticks(report["snr_db"])
@@ -89,8 +92,13 @@ def validate_report(report):
     values = np.asarray(report["nmse"]["mean_nmse_db"])
     if report["nmse"].get("split") != "test" or values.shape != snr.shape or not np.all(np.isfinite(values)):
         raise ValueError("Invalid test NMSE values in report")
-    if "corrected_mean_nmse_db" in report["nmse"]:
-        corrected = np.asarray(report["nmse"]["corrected_mean_nmse_db"])
+    has_dd = any(curve.get("identifier") == "dd_ce_lmmse" for curve in report["curves"].values())
+    if has_dd != ("dd_mean_nmse_db" in report["nmse"]):
+        raise ValueError("DD-CE requires matching BER and corrected CSI NMSE")
+    for field in ("corrected_mean_nmse_db", "dd_mean_nmse_db"):
+        if field not in report["nmse"]:
+            continue
+        corrected = np.asarray(report["nmse"][field])
         if corrected.shape != snr.shape or not np.all(np.isfinite(corrected)):
             raise ValueError("Invalid corrected CSI NMSE values in report")
 
@@ -115,6 +123,7 @@ def publish_report(run, report, *, redraw_nmse=False):
         if (not redraw_nmse and previous is not None and (run/"nmse_snr.png").is_file()
                 and previous.get("nmse", {}).get("mean_nmse_db") == report["nmse"]["mean_nmse_db"]
                 and previous.get("nmse", {}).get("corrected_mean_nmse_db") == report["nmse"].get("corrected_mean_nmse_db")
+                and previous.get("nmse", {}).get("dd_mean_nmse_db") == report["nmse"].get("dd_mean_nmse_db")
                 and previous.get("nmse", {}).get("provenance", {}).get("cache_key") == report["nmse"]["provenance"]["cache_key"]
                 and previous.get("snr_db") == report["snr_db"]
                 and previous.get("channel") == report["channel"]
