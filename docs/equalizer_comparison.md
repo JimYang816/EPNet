@@ -1,6 +1,6 @@
 # NOF1 / NCS1 七算法统一评测
 
-主比较包含 Single-tap LMMSE、Full-matrix LMMSE、MMSE-DFE、DD-CE + Full-matrix LMMSE、UDNet、OAMP-Net2 和 ICR-MMSE-Net。统一入口为 `scripts.evaluate.compare`，配置为 `configs/evaluation/ber_comparison.json`。ICR 默认采用8层联合 CSI 修正与 MMSE 展开。各方法的实现见 [ICR 算法设计](icr_mmse_algorithm_design.md)、[MMSE-DFE](mmse_dfe.md)、[判决导向信道估计](dd_ce_lmmse.md) 和 [OAMP-Net2](additional_equalizers.md)。
+主比较包含 Single-tap LMMSE、Full-matrix LMMSE、MMSE-DFE、DD-DPSS、UDNet、OAMP-Net2 和 ICR-MMSE-Net。统一入口为 `scripts.evaluate.compare`，配置为 `configs/evaluation/ber_comparison.json`。ICR 默认采用8层联合 CSI 修正与 MMSE 展开。各方法的实现见 [ICR 算法设计](icr_mmse_algorithm_design.md)、[MMSE-DFE](mmse_dfe.md)、[软判决 DPSS-LMMSE 重估](dd_ce_lmmse.md) 和 [OAMP-Net2](additional_equalizers.md)。
 
 ## 数据与指标
 
@@ -12,7 +12,7 @@ compensated CSI 按已保存的 alpha 构造 `H_init=H_ref+alpha*(H_raw-H_ref)`�
 
 当前报告位于 `outputs/runs/equalizer_comparison_dd_ce_20261102/{nof1,ncs1}/`，包含 `metrics.json`、`report.html`、七算法的 `ber_snr.png` 和平均 NMSE 图 `nmse_snr.png`。此前六算法报告保存在 `outputs/runs/equalizer_comparison_six/`。
 
-NMSE 对每块完整矩阵的线性相对误差先平均，再转换为 dB。固定 CSI 方法共用输入曲线，DD-CE 和 ICR 各自报告修正后的 CSI。零误码在图中以 0.5/总比特数处的空心倒三角显示，数值 BER 为零。
+NMSE 对每块完整矩阵的线性相对误差先平均，再转换为 dB。固定 CSI 方法共用输入曲线，DD-DPSS 和 ICR 各自报告修正后的 CSI。零误码在图中以 0.5/总比特数处的空心倒三角显示，数值 BER 为零。
 
 ## 配置与运行
 
@@ -21,7 +21,7 @@ NMSE 对每块完整矩阵的线性相对误差先平均，再转换为 dB。固
 | Single-tap LMMSE | 无额外参数 | `src/algorithms/MMSE/single_tap.py` |
 | Full-matrix LMMSE | 完整矩阵、完整热噪声协方差 | `src/algorithms/MMSE/full_matrix.py` |
 | MMSE-DFE | 完整矩阵，Cholesky，固定逆数据列顺序，硬QPSK反馈 | `src/algorithms/mmse_dfe/detector.py` |
-| DD-CE + Full-matrix LMMSE | 硬 QPSK 虚拟导频，32 个接收机先验模式，一次 CSI 更新后重检 | `src/algorithms/dd_ce_lmmse/detector.py` |
+| DD-DPSS | QPSK 后验软均值作虚拟导频，在 32 个 DPSS 先验模式内重估一次 CSI，再做完整矩阵 LMMSE 检测 | `src/algorithms/dd_ce_lmmse/detector.py` |
 | UDNet | 22层，窗口32，隐藏维度48 | `src/algorithms/udnet/` |
 | OAMP-Net2 | 10层，方差下限5e-13 | `src/algorithms/oamp_net2/` |
 | ICR-MMSE-Net | 默认8层，B=16，逐层CSI修正，窗口32/16 | `src/algorithms/icr_mmse/` |
@@ -65,11 +65,11 @@ python -m scripts.run.icr_experiment --output outputs/runs/icr_full_<run_id> --d
 `progress.json` 标记当前步骤、成功或失败，`logs/` 保存逐步日志；最终 `comparison/{nof1,ncs1}/`
 包含两类指标图和 HTML 报告，`results_digest.json` 汇总两信道实际误码率。旧实验目录不改写。
 
-论文正式消融 A–D 与七算法主比较分开汇总。C 组使用学习型迭代 CSI 修正，DD-CE 使用传统硬判决与接收机先验。控制条件见 [ICR 说明第5节](icr_mmse.md#5-比较消融与输出)。
+论文正式消融 A–D 与七算法主比较分开汇总。C 组使用学习型迭代 CSI 修正，DD-DPSS 使用软符号和接收机的 DPSS 先验。控制条件见 [ICR 说明第5节](icr_mmse.md#5-比较消融与输出)。
 
 ## 缓存与效率
 
-传统基线只校验并读取 `test.h5` 和 `model.h5`。完整矩阵输入保留所有接收行和数据列，按当前 CSI 消除已知导频。未提供算法配置时只运行两种 LMMSE，主比较配置另外启用 MMSE-DFE 和 DD-CE。
+传统基线只校验并读取 `test.h5` 和 `model.h5`。完整矩阵输入保留所有接收行和数据列，按当前 CSI 消除已知导频。未提供算法配置时只运行两种 LMMSE，主比较配置另外启用 MMSE-DFE 和 DD-DPSS。
 
 缓存位于 `outputs/runs/_cache/`，逐SNR、帧和D块记录完成状态、校验和及来源。计算身份绑定输入视图、算法参数、所需代码、数据内容和数值环境；更换batch、线程数、输出路径或只修改文档不使有效数值缓存失效。两种MMSE的计算身份保留。新增计算辅助函数时，在 `src/evaluation/registry.py` 和 `src/evaluation/fingerprints.py` 登记实际依赖。
 

@@ -101,7 +101,7 @@ def evaluate(dataset_path, run, backend, *, checkpoints=None, batch_size=8, cach
         report["comparison_algorithms"] = list(report["curves"])
         report["checkpoint_paths"] = {name: str(Path(path).resolve()) for name, path in checkpoints.items()}
         report["nmse"]["semantics"] = ("Shared input CSI. dd_mean_nmse_db and corrected_mean_nmse_db, "
-            "when present, score the full corrected CSI of DD-CE and ICR-MMSE-Net respectively.")
+            "when present, score the full corrected CSI of DD-DPSS and ICR-MMSE-Net respectively.")
         guard.assert_unchanged()
         publish_report(run, report)
         _write_html(run, report)
@@ -112,7 +112,7 @@ def _write_html(run, report):
     headings = "".join(f"<th>{s:g} dB</th>" for s in report["snr_db"])
     rows = "".join("<tr><th>"+html.escape(name)+"</th>"+"".join(f"<td>{v:.6g}</td>" for v in curve["ber"])+"</tr>"
                    for name, curve in report["curves"].items())
-    nmse_fields = (("输入 CSI", "mean_nmse_db"), ("DD-CE", "dd_mean_nmse_db"),
+    nmse_fields = (("输入 CSI", "mean_nmse_db"), ("DD-DPSS", "dd_mean_nmse_db"),
                    ("CRU-Net", "corrected_mean_nmse_db"))
     nmse_rows = "".join(f"<tr><th>{label}</th>"+"".join(f"<td>{v:.3f}</td>" for v in report["nmse"][field])+"</tr>"
                         for label, field in nmse_fields if field in report["nmse"])

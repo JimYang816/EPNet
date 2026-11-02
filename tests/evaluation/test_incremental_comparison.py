@@ -132,7 +132,7 @@ def test_dd_ce_cache_preserves_paired_metrics_and_skips_inference(experiment, mo
     original = experiment.run()
     parameters = {"dd_ce_lmmse": {"rank": 3, "prior_scale": 0.03}}
     extended = experiment.run("dd", algorithm_parameters=parameters)
-    curve = extended["curves"]["DD-CE + Full-matrix LMMSE"]
+    curve = extended["curves"]["DD-DPSS"]
     assert curve["total_bits"] == original["curves"]["Full-matrix LMMSE"]["total_bits"]
     assert extended["curves"]["Full-matrix LMMSE"]["provenance"]["reused"]
     with h5py.File(curve["provenance"]["cache_file"]) as cache:
@@ -140,13 +140,13 @@ def test_dd_ce_cache_preserves_paired_metrics_and_skips_inference(experiment, mo
         expected = 10*np.log10(cache["corrected_nmse"][:].mean(axis=(1, 2)))
     np.testing.assert_allclose(extended["nmse"]["dd_mean_nmse_db"], expected)
     assert not np.allclose(expected, extended["nmse"]["mean_nmse_db"])
-    with pytest.raises(ValueError, match="DD-CE"):
+    with pytest.raises(ValueError, match="DD-DPSS"):
         replot(experiment.root/"run", output=experiment.root/"dd", required_algorithms=parameters)
     assert json.loads((experiment.root/"dd/metrics.json").read_text())["nmse"] == extended["nmse"]
     with monkeypatch.context() as scope:
         scope.setattr(comparison, "receiver_context", forbid)
         cached = experiment.run("dd-cached", algorithm_parameters=parameters)
-        assert cached["curves"]["DD-CE + Full-matrix LMMSE"]["provenance"]["reused"]
+        assert cached["curves"]["DD-DPSS"]["provenance"]["reused"]
         assert cached["nmse"]["dd_mean_nmse_db"] == extended["nmse"]["dd_mean_nmse_db"]
     with pytest.raises(ValueError, match="compensated CSI"):
         experiment.run("raw-dd", algorithm_parameters=parameters, input_view="raw")

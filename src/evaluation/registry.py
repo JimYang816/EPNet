@@ -26,7 +26,7 @@ ALGORITHMS = (
 # report. The unified experiment explicitly enables the other baselines.
 OPTIONAL_ALGORITHMS = (
     Algorithm("mmse_dfe", "MMSE-DFE", "src.algorithms.mmse_dfe.detector", MATRIX),
-    Algorithm("dd_ce_lmmse", "DD-CE + Full-matrix LMMSE", "src.algorithms.dd_ce_lmmse.detector",
+    Algorithm("dd_ce_lmmse", "DD-DPSS", "src.algorithms.dd_ce_lmmse.detector",
               MATRIX+("src.algorithms.MMSE.full_matrix", "src.evaluation.dd_ce")),
 )
 AVAILABLE_ALGORITHMS = ALGORITHMS+OPTIONAL_ALGORITHMS

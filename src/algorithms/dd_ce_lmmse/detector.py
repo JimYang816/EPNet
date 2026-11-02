@@ -1,4 +1,4 @@
-"""One hard-decision, reduced-rank MAP channel update between two LMMSE solves."""
+"""Soft-decision data-aided DPSS-LMMSE channel re-estimation (DD-DPSS)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from src.algorithms.interface import EqualizerBatch, EqualizerResult
+from src.algorithms.likelihood import batch_likelihood
 from src.algorithms.MMSE.full_matrix import equalize_batch as full_lmmse
 
 
@@ -71,14 +72,26 @@ class DDResult(EqualizerResult):
     corrected_channel: Any
 
 
+def _soft_qpsk(batch, backend, whitener):
+    """QPSK posterior means under the scalar soft-output LMMSE approximation."""
+    xp = backend.torch or np
+    gram, matched = batch_likelihood(batch, whitener, backend)
+    identity = backend.array(np.eye(len(batch.data_indices), dtype=np.complex128))
+    covariance = xp.linalg.inv(gram + identity)
+    estimate = (covariance @ matched[..., None])[..., 0]
+    variance = covariance.diagonal(0, -2, -1).real.clip(np.finfo(np.float64).eps, 1.)
+    # Equal-energy QPSK cancels the common likelihood term. The gain cancels
+    # before division, so an unobservable tone has zero mean as well.
+    scaled = np.sqrt(2.) * estimate / variance
+    return (xp.tanh(scaled.real) + 1j * xp.tanh(scaled.imag)) / np.sqrt(2.)
+
+
 def equalize_batch(batch, backend, *, whitener, known, modes, prior_scale):
     """Infer from H0, the noisy received block, public tones and receiver prior."""
     xp = backend.torch or np
-    initial = full_lmmse(batch, backend, whitener=whitener).symbols
-    hard = (np.where(initial.real < 0, -1, 1)+1j*np.where(initial.imag < 0, -1, 1))/np.sqrt(2)
-    symbols = np.broadcast_to(known, (len(initial), len(known))).astype(np.complex128, copy=True)
-    symbols[:, batch.data_indices] = hard
-    symbols = backend.array(symbols)
+    soft = _soft_qpsk(batch, backend, whitener)
+    symbols = backend.array(np.broadcast_to(known, (len(soft), len(known))).astype(np.complex128, copy=True))
+    symbols[:, batch.data_indices] = soft
     residual = batch.raw_observations[..., None] - batch.channel @ symbols[..., None]
     design = whitener @ modes.responses(symbols, xp)
     adjoint = design.conj().swapaxes(-2, -1)

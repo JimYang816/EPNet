@@ -28,9 +28,9 @@ def plot_ber(report, path):
         for name, values in report["curves"].items():
             color, marker = styles[name]
             ber, bits = np.array(values["ber"]), np.array(values["total_bits"])
-            # Make DD-CE visible when its BER overlaps the OAMP-Net2 markers.
+            # Keep the data-aided curve visible at overlapping points.
             line = dict(markersize=6)
-            if name == "DD-CE + Full-matrix LMMSE":
+            if name == "DD-DPSS":
                 line.update(linestyle="--", markersize=8, markerfacecolor="none", zorder=3)
             ax.semilogy(report["snr_db"], np.where(ber > 0, ber, np.nan), color=color,
                         marker=marker, linewidth=1.8, **line,
@@ -60,7 +60,7 @@ def plot_nmse(report, path):
     fig, ax = plt.subplots(figsize=(6.4, 4.2), layout="constrained")
     ax.plot(report["snr_db"], report["nmse"]["mean_nmse_db"], "o-", color="#2477b3", label="Test CSI")
     if "dd_mean_nmse_db" in report["nmse"]:
-        ax.plot(report["snr_db"], report["nmse"]["dd_mean_nmse_db"], "P--", color="#8052aa", label="DD-CE corrected CSI")
+        ax.plot(report["snr_db"], report["nmse"]["dd_mean_nmse_db"], "P--", color="#8052aa", label="DD-DPSS corrected CSI")
     if "corrected_mean_nmse_db" in report["nmse"]:
         ax.plot(report["snr_db"], report["nmse"]["corrected_mean_nmse_db"], "s-",
                 color="#b42a55", label="CRU-Net corrected CSI")
@@ -98,7 +98,7 @@ def validate_report(report):
         raise ValueError("Invalid test NMSE values in report")
     has_dd = any(curve.get("identifier") == "dd_ce_lmmse" for curve in report["curves"].values())
     if has_dd != ("dd_mean_nmse_db" in report["nmse"]):
-        raise ValueError("DD-CE requires matching BER and corrected CSI NMSE")
+        raise ValueError("DD-DPSS requires matching BER and corrected CSI NMSE")
     for field in ("corrected_mean_nmse_db", "dd_mean_nmse_db"):
         if field not in report["nmse"]:
             continue

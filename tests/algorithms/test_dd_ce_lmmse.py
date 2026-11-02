@@ -1,4 +1,4 @@
-"""Compare DD-CE against explicit time-varying channel matrices and a receive-space solve."""
+"""Check DD-DPSS against explicit channel matrices and a receive-space soft receiver."""
 from types import SimpleNamespace
 
 import numpy as np
@@ -45,6 +45,7 @@ def test_time_varying_dd_update_and_redetection(device):
     y = random((2, n))
     a = random((n, n))
     noise = a@a.conj().T/n+np.eye(n)
+    h[1, :, data[0]] = 0  # An unobservable data symbol must have zero soft mean.
     variances, prior_scale = np.array([.1, .3]), .03
     b = backend.array
     batch = EqualizerBatch(b(h), b(y), b(y-h@known), variances, data, noise)
@@ -56,8 +57,14 @@ def test_time_varying_dd_update_and_redetection(device):
             return columns.conj().T@np.linalg.solve(columns@columns.conj().T + variance*noise,
                                                     observation-channel@known)
         first = detect(initial)
+        columns = initial[:, data]
+        observation_covariance = columns @ columns.conj().T + variance * noise
+        gain = np.diag(columns.conj().T @ np.linalg.solve(observation_covariance, columns)).real
+        constellation = np.array([1+1j, 1-1j, -1+1j, -1-1j]) / np.sqrt(2)
+        logits = 2 * (first[:, None] * constellation.conj()).real / (1 - gain[:, None])
+        weights = np.exp(logits - logits.max(axis=1, keepdims=True))
         x = known.copy()
-        x[data] = (np.where(first.real < 0, -1, 1)+1j*np.where(first.imag < 0, -1, 1))/np.sqrt(2)
+        x[data] = (weights @ constellation) / weights.sum(axis=1)
         design = np.stack([mode@x for mode in explicit], axis=1)
         # Independent Bayesian receive-space update; no whitening or normal-equation code.
         weights = design.conj().T@np.linalg.solve(design@design.conj().T+variance/prior_scale*noise,
