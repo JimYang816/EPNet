@@ -1,6 +1,6 @@
 # 独立训练与增量评测
 
-当前六算法报告位于 `outputs/runs/equalizer_comparison_six/{nof1,ncs1}/`，包含 BER 和平均 NMSE 图。原始正式测试报告保存在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/`；从原报告另存当前曲线的命令见[统一评测](equalizer_comparison.md)。
+当前七算法报告位于 `outputs/runs/equalizer_comparison_dd_ce_20261102/{nof1,ncs1}/`，包含 BER 和平均 NMSE 图。此前六算法报告保存在 `outputs/runs/equalizer_comparison_six/`。DD-CE 的 BER 和修正 CSI 的逐块线性 NMSE 同步缓存，可用 `--force dd_ce_lmmse` 单独刷新。运行方法见[统一评测](equalizer_comparison.md)。
 服务器保留 ICR 的 warmup/fixed/joint 检查点、UDNet 的 best/latest 检查点、原 OAMP-Net2 检查点及逐算法结果缓存。
 本地保存图、指标、训练记录与报告；完整数据、特征缓存及权重仍留服务器。
 

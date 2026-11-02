@@ -44,7 +44,8 @@ def main():
                     replot(output/channel.lower())
                 else:
                     replot(args.from_run/channel.lower(), output=output/channel.lower(), expected_channel=channel,
-                           expected_view=args.input_view or config.get("input_view", "compensated"))
+                           expected_view=args.input_view or config.get("input_view", "compensated"),
+                           required_algorithms=config.get("algorithms", {}))
         return
     with threadpool_limits(args.threads):
         backend = DenseBackend(args.device)

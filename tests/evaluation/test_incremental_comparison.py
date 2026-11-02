@@ -140,6 +140,9 @@ def test_dd_ce_cache_preserves_paired_metrics_and_skips_inference(experiment, mo
         expected = 10*np.log10(cache["corrected_nmse"][:].mean(axis=(1, 2)))
     np.testing.assert_allclose(extended["nmse"]["dd_mean_nmse_db"], expected)
     assert not np.allclose(expected, extended["nmse"]["mean_nmse_db"])
+    with pytest.raises(ValueError, match="DD-CE"):
+        replot(experiment.root/"run", output=experiment.root/"dd", required_algorithms=parameters)
+    assert json.loads((experiment.root/"dd/metrics.json").read_text())["nmse"] == extended["nmse"]
     with monkeypatch.context() as scope:
         scope.setattr(comparison, "receiver_context", forbid)
         cached = experiment.run("dd-cached", algorithm_parameters=parameters)

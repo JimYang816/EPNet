@@ -67,3 +67,17 @@ def test_time_varying_dd_update_and_redetection(device):
         np.testing.assert_allclose(result.symbols[i], detect(expected), atol=3e-10)
         assert not np.allclose(detect(expected), first)
     np.testing.assert_array_equal(backend.numpy(batch.channel), h)
+
+
+def test_scored_nmse_uses_full_matching_reference_for_each_frame_and_d():
+    from src.evaluation.dd_ce import corrected_nmse
+    rng = np.random.default_rng(39)
+    truth = rng.normal(size=(3, 2, 5, 5))+1j*rng.normal(size=(3, 2, 5, 5))
+    windows = np.array([2, 0, 2, 1])
+    dataset = SimpleNamespace(_h={"samples/window_index": windows, "windows/reference_csi": truth})
+    for d in (0, 1):
+        estimated = truth[windows, d].copy()
+        estimated[:, 3, 1] += np.array([1j, -2j, 0, 3])
+        expected = [np.linalg.norm(h-truth[w, d])**2/np.linalg.norm(truth[w, d])**2
+                    for h, w in zip(estimated, windows)]
+        np.testing.assert_allclose(corrected_nmse(dataset, list(range(4)), d, estimated, DenseBackend()), expected)

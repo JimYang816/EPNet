@@ -13,7 +13,7 @@ import numpy as np
 
 from src.common.experiment import write_json, file_sha256
 from src.evaluation.fingerprints import source_fingerprint
-from src.evaluation.registry import CURVES, SUPPORTED_CURVES, normalize_report_labels
+from src.evaluation.registry import AVAILABLE_ALGORITHMS, CURVES, SUPPORTED_CURVES, normalize_report_labels
 from src.evaluation.result_cache import FileLock
 
 
@@ -28,8 +28,12 @@ def plot_ber(report, path):
         for name, values in report["curves"].items():
             color, marker = styles[name]
             ber, bits = np.array(values["ber"]), np.array(values["total_bits"])
+            # Make DD-CE visible when its BER overlaps the OAMP-Net2 markers.
+            line = dict(markersize=6)
+            if name == "DD-CE + Full-matrix LMMSE":
+                line.update(linestyle="--", markersize=8, markerfacecolor="none", zorder=3)
             ax.semilogy(report["snr_db"], np.where(ber > 0, ber, np.nan), color=color,
-                        marker=marker, markersize=6, linewidth=1.8,
+                        marker=marker, linewidth=1.8, **line,
                         label="CRU-Net" if name == "ICR-MMSE-Net" else name)
             zero = ber == 0
             if np.any(zero):
@@ -155,7 +159,7 @@ def publish_report(run, report, *, redraw_nmse=False):
             raise
 
 
-def replot(run, *, output=None, expected_channel=None, expected_view=None):
+def replot(run, *, output=None, expected_channel=None, expected_view=None, required_algorithms=()):
     """Redraw the retained curves from saved values, optionally in a new directory."""
     report = json.loads((Path(run)/"metrics.json").read_text(encoding="utf-8"))
     if expected_channel is not None and report.get("channel") != expected_channel:
@@ -171,6 +175,10 @@ def replot(run, *, output=None, expected_channel=None, expected_view=None):
         report.get("parameters", {}).pop(identifier, None)
     if "comparison_algorithms" in report:
         report["comparison_algorithms"] = [name for name in report["comparison_algorithms"] if name not in retired]
+    required = {a.label for a in AVAILABLE_ALGORITHMS if a.identifier in required_algorithms}
+    missing = required-normalize_report_labels(report)["curves"].keys()
+    if missing:
+        raise ValueError(f"Saved report lacks configured curves {sorted(missing)}. Run evaluation before plotting.")
     run = Path(run if output is None else output)
     publish_report(run, report, redraw_nmse=True)
     if report.get("schema") == "watermark-unified-comparison-v1":

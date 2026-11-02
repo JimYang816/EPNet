@@ -36,7 +36,7 @@ for i = N-1, ..., 0:
 
 ## 运行与指标
 
-`configs/evaluation/ber_comparison.json` 已加入 `"mmse_dfe": {}`，默认统一比较六种算法。
+`configs/evaluation/ber_comparison.json` 通过 `"mmse_dfe": {}` 启用固定 CSI 的判决反馈均衡器。
 
 ```bash
 python -m scripts.evaluate.compare --device cuda --threads 4
@@ -47,9 +47,7 @@ python -m scripts.evaluate.compare --plot-only
 
 正式测试仍为每信道、每 SNR 600 帧、D1/D2、512 个数据槽，共 1,228,800 比特。
 新增结果单独缓存；已有其他算法及 NMSE 的有效缓存继续复用。
-`ber_snr.png` 包含六条曲线；`nmse_snr.png` 中 MMSE-DFE 共用固定输入 CSI 的平均 NMSE，
-ICR-MMSE-Net 另报修正后的平均 NMSE。检测器不修正 CSI，因此不另造一条重合的 NMSE 曲线。
-默认输出为 `outputs/runs/equalizer_comparison_six/{nof1,ncs1}/`。
+统一 BER 图包含七条曲线。NMSE 图中 MMSE-DFE 共用固定输入 CSI，DD-CE 和 ICR-MMSE-Net 各自报告修正后的平均 NMSE。当前输出目录和运行方式见[统一评测](equalizer_comparison.md)。
 
 ## 正式结果（2026-10-31）
 

@@ -1,7 +1,7 @@
-# OAMP-Net2 与六算法统一评测
+# OAMP-Net2 与七算法统一评测
 
 主对比为 Single-tap LMMSE、Full-matrix LMMSE、
-MMSE-DFE、UDNet、OAMP-Net2、ICR-MMSE-Net。MMSE-DFE 的计算与固定检测顺序见 [说明](mmse_dfe.md)。保持已验收数据文件、物理记录划分、
+MMSE-DFE、DD-CE + Full-matrix LMMSE、UDNet、OAMP-Net2、ICR-MMSE-Net。MMSE-DFE 的计算与固定检测顺序见 [说明](mmse_dfe.md)。保持已验收数据文件、物理记录划分、
 compensated CSI、导频、接收观测、QPSK 映射及 BER 定义不变。
 NOF1 的输入平均 NMSE 为 −12.70→−18.30 dB，NCS1 为 −6.20→−10.67 dB，SNR 0→30 dB。
 
@@ -76,10 +76,10 @@ python -m scripts.evaluate.oamp_net2 --channel NOF1 --device cuda
 # 本地已有数据时的小样本 CPU 检查；单独输出，不能用作正式检查点
 python -m scripts.train.oamp_net2 --channel NOF1 --device cpu --max-frames 2 --epochs 1 --batch-size 2 --output outputs/runs/oamp_net2_smoke
 
-# 无需任何学习检查点，运行三种传统方法
+# 无需任何学习检查点，运行四种传统方法
 python -m scripts.evaluate.compare --device cuda --baselines-only
 
-# 六算法统一评测
+# 七算法统一评测
 python -m scripts.evaluate.compare --device cuda --threads 4
 python -m scripts.evaluate.compare --channel NCS1 --device cuda --force mmse_dfe
 python -m scripts.evaluate.compare --plot-only
@@ -96,10 +96,10 @@ UDNet、OAMP-Net2、ICR-MMSE-Net 路径；当前ICR和UDNet分别引用
 OAMP-Net2仍使用本页所述独立训练目录的 `best.pt`。统一入口在开始计算前校验全部所需检查点；
 缺失或身份不匹配会报错，不会跳过曲线或拿未训练模型替代。
 没有 `checkpoints` 的旧自定义配置仍保留原基线接口行为。
-统一评测默认 batch 8，三种传统方法的参数由 `algorithms` 提供；独立 ICR 流水线的 batch 2 不会覆盖此值。各入口的算法数量、强制重算和离线绘图规则见 [均衡评测与缓存](equalizer_comparison.md)。
+统一评测默认 batch 8，四种传统方法的参数由 `algorithms` 提供；独立 ICR 流水线的 batch 2 不会覆盖此值。各入口的算法数量、强制重算和离线绘图规则见 [均衡评测与缓存](equalizer_comparison.md)。
 
-双信道六算法报告在 `outputs/runs/equalizer_comparison_six/{nof1,ncs1}/`，包含：
-`metrics.json`、`report.html`、六条 BER 曲线的 `ber_snr.png`、输入/修正 CSI 的 `nmse_snr.png`。
+双信道七算法报告在 `outputs/runs/equalizer_comparison_dd_ce_20261102/{nof1,ncs1}/`，包含：
+`metrics.json`、`report.html`、七条 BER 曲线的 `ber_snr.png`、输入/修正 CSI 的 `nmse_snr.png`。
 各子评测保留详细来源。正式测试每个算法、每个 SNR 必须恰好评测 600 帧、D1/D2、
 512 个数据槽，即 1,228,800 比特；汇总会再次核对数据哈希、SNR、视图和比特总数。
 
@@ -109,7 +109,7 @@ UDNet按数据、权重和实现身份复用逐块缓存；ICR按同样的实际
 可从当前检查点所属实验导入匹配的正式报告。`--force icr_mmse` 显式重算ICR，`--force all` 同时刷新传统算法、OAMP和ICR；具体边界见 [增量评测](incremental_evaluation.md)。
 离线绘图使用保存数值，不需要数据、检查点或 GPU。
 
-效率入口 `scripts.evaluate.icr_efficiency` 默认在六个独立新进程中测量六种方法，
+效率入口 `scripts.evaluate.icr_efficiency` 默认在各自独立的进程中测量七种方法，
 必须提供 `--checkpoint`、`--udnet-checkpoint` 和 `--oamp-net2-checkpoint`。
 OAMP 的逐样本完整谱分解计入预处理时间，
 不复用训练谱特征或 BER 结果缓存；计时进程禁止读取测试标签。
@@ -130,5 +130,5 @@ python -m pytest tests/algorithms/test_additional_equalizers.py tests/algorithms
 每层输出，覆盖有色噪声、矩形系统、四组标量梯度、秩亏、零信道、接收增益不变性，
 并在 CPU 上核对 PyTorch 与 NumPy 路径。
 集成测试覆盖固定划分、训练不访问测试、精确续训、raw/小样本检查点拒绝、标签访问拦截、
-特征损坏重建、两种 MMSE 缓存保持、DFE 选择性重算、六算法误码计数与离线重画。
+特征损坏重建、两种 MMSE 缓存保持、DFE 选择性重算、七算法误码计数与离线重画。
 这些小规模 CPU 测试验证实现与链路，不提供正式数据集上的性能结论。
