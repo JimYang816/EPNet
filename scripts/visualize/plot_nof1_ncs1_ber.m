@@ -148,10 +148,14 @@ function data = load_ber_report(reportPath, channel, algorithmIds)
     data.ber = zeros(numel(algorithmIds), numel(data.snrDb));
     data.totalBits = zeros(size(data.ber));
     for algorithmIndex = 1:numel(algorithmIds)
-        matches = find(strcmp(identifiers, algorithmIds{algorithmIndex}));
-        assert(isscalar(matches), 'BERPlot:MissingAlgorithm', ...
-            'Expected one %s curve in %s.', algorithmIds{algorithmIndex}, reportPath);
-        curve = curves{matches};
+        if strcmp(algorithmIds{algorithmIndex}, 'dd_ce_lmmse')
+            curve = load_soft_dd_dpss(report, reportPath);
+        else
+            matches = find(strcmp(identifiers, algorithmIds{algorithmIndex}));
+            assert(isscalar(matches), 'BERPlot:MissingAlgorithm', ...
+                'Expected one %s curve in %s.', algorithmIds{algorithmIndex}, reportPath);
+            curve = curves{matches};
+        end
         ber = curve.ber(:).';
         errors = curve.errors(:).';
         bits = curve.total_bits(:).';

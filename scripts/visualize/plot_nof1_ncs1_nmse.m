@@ -93,11 +93,9 @@ function data = load_nmse_report(reportPath, channel, acceptedEndpoints)
         'Expected a complete compensated-CSI test report for %s.', channel);
     assert(isfield(report.nmse, 'corrected_mean_nmse_db'), ...
         'NMSEPlot:MissingCorrectedCSI', 'Corrected CSI NMSE is missing: %s', reportPath);
-    assert(isfield(report.nmse, 'dd_mean_nmse_db'), ...
-        'NMSEPlot:MissingDDCSI', 'DD-DPSS CSI NMSE is missing: %s', reportPath);
     data.snrDb = report.snr_db(:).';
     data.initialDb = report.nmse.mean_nmse_db(:).';
-    data.ddDb = report.nmse.dd_mean_nmse_db(:).';
+    [~, data.ddDb] = load_soft_dd_dpss(report, reportPath);
     data.correctedDb = report.nmse.corrected_mean_nmse_db(:).';
     assert(isequal(data.snrDb, 0:5:30), 'NMSEPlot:InvalidSnr', ...
         'Expected the SNR grid 0:5:30 dB for %s.', channel);
