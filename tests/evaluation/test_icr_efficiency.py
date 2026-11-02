@@ -6,7 +6,7 @@ pytest.importorskip("torch")
 from src.evaluation.icr_efficiency import benchmark, _worker
 
 
-@pytest.mark.parametrize("identifier", ("ep", "robust_ep"))
+@pytest.mark.parametrize("identifier", ("ep", "robust_ep", "mmse_pic"))
 def test_retired_detectors_are_rejected_before_loading_inputs(identifier):
     with pytest.raises(ValueError, match="Invalid efficiency benchmark controls"):
         benchmark("missing.h5", "missing.json", "missing-icr.pt", "missing-ud.pt", algorithms=(identifier,))

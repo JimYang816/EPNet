@@ -105,24 +105,22 @@ def test_comparison_needs_neither_retired_detectors_nor_training_data(experiment
 
 
 def test_dfe_addition_reuses_existing_detectors_and_supports_selective_force(experiment, monkeypatch):
-    original = experiment.run(algorithm_parameters={"mmse_pic": {"iterations": 2}})
+    original = experiment.run()
     calls = watch(monkeypatch)
-    extended = experiment.run("with-dfe", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 2}})
+    extended = experiment.run("with-dfe", algorithm_parameters={"mmse_dfe": {}})
     assert not changed(calls)
     assert extended["curves"]["MMSE-DFE"]["total_bits"] == [64]*7
     for name, curve in original["curves"].items():
         assert extended["curves"][name]["provenance"]["reused"]
         assert extended["curves"][name]["provenance"]["cache_key"] == curve["provenance"]["cache_key"]
         assert extended["curves"][name]["errors"] == curve["errors"]
-    forced = experiment.run("force-dfe", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 2}},
-                            force=["mmse_dfe"])
+    forced = experiment.run("force-dfe", algorithm_parameters={"mmse_dfe": {}}, force=["mmse_dfe"])
     assert not changed(calls)
-    assert forced["curves"]["MMSE-PIC"]["provenance"]["reused"]
+    assert all(forced["curves"][name]["provenance"]["reused"] for name in original["curves"])
     assert not forced["curves"]["MMSE-DFE"]["provenance"]["reused"]
     with monkeypatch.context() as scope:
         scope.setattr(comparison, "prepare_batch", forbid)
-        cached = experiment.run("dfe-cached", batch_size=1,
-                                algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 2}})
+        cached = experiment.run("dfe-cached", batch_size=1, algorithm_parameters={"mmse_dfe": {}})
     assert cached["curves"]["MMSE-DFE"]["provenance"]["reused"]
     with pytest.raises(ValueError, match="Invalid parameters"):
         resolve_parameters({"mmse_dfe": {"iterations": 10}})
@@ -130,21 +128,23 @@ def test_dfe_addition_reuses_existing_detectors_and_supports_selective_force(exp
         experiment.run("raw-dfe", algorithm_parameters={"mmse_dfe": {}}, input_view="raw")
 
 
-def test_ber_figure_draws_all_seven_curves_with_stable_styles(tmp_path, monkeypatch):
+def test_ber_figure_draws_all_six_curves_with_stable_styles(tmp_path, monkeypatch):
     from matplotlib.figure import Figure
     from src.evaluation.comparison_plots import plot_ber
     from src.evaluation.registry import SUPPORTED_CURVES
     captured = []
 
     def capture(figure, *args, **kwargs):
-        captured.append({line.get_label(): (line.get_color(), line.get_marker()) for line in figure.axes[0].lines})
+        aliases = {"CRU-Net": "ICR-MMSE-Net"}
+        captured.append({aliases.get(line.get_label(), line.get_label()): (line.get_color(), line.get_marker())
+                         for line in figure.axes[0].lines})
 
     monkeypatch.setattr(Figure, "savefig", capture)
     report = dict(channel="NOF1", snr_db=[0, 5], frame_count=600, bits_per_snr=1228800,
                   curves={name: dict(ber=[.1, .01], total_bits=[1228800]*2) for name in SUPPORTED_CURVES})
-    plot_ber(report, tmp_path/"seven.png")
+    plot_ber(report, tmp_path/"six.png")
     assert tuple(captured[-1]) == SUPPORTED_CURVES
-    assert len(set(captured[-1].values())) == 7
+    assert len(set(captured[-1].values())) == 6
     styles = captured[-1]
     report["curves"] = {name: report["curves"][name] for name in reversed(SUPPORTED_CURVES) if name != "MMSE-DFE"}
     plot_ber(report, tmp_path/"historical.png")
@@ -342,16 +342,24 @@ def test_legacy_single_tap_name_replots_without_inference_or_lost_provenance(exp
 def test_plot_only_removes_retired_curves_from_historical_reports(experiment, monkeypatch):
     original = experiment.run()
     historical = dict(original)
-    historical["curves"] = dict(original["curves"], EP=original["curves"]["Full-matrix LMMSE"],
-                                **{"Robust EP": original["curves"]["Full-matrix LMMSE"]})
-    historical["parameters"] = dict(original["parameters"], ep={"iterations": 10}, robust_ep={"iterations": 10})
+    historical["curves"] = dict(original["curves"])
+    historical["curves"].update(dict.fromkeys(("EP", "Robust EP", "MMSE-PIC"), original["curves"]["Full-matrix LMMSE"]))
+    historical["comparison_algorithms"] = list(historical["curves"])
+    historical["parameters"] = dict(original["parameters"], ep={"iterations": 10}, robust_ep={"iterations": 10},
+                                    mmse_pic={"iterations": 10})
     historical.update(robust_covariance={"provenance": "unavailable"}, ep="historical detector",
                       paper_doi="historical EP paper", rejected_sites=[0, 0])
     (experiment.root/"run/metrics.json").write_text(json.dumps(historical), encoding="utf-8")
     experiment.data.rename(experiment.root/"unavailable-data")
     monkeypatch.setattr(comparison, "prepare_batch", forbid)
-    updated = replot(experiment.root/"run")
+    with pytest.raises(ValueError, match="CSI view"):
+        replot(experiment.root/"run", output=experiment.root/"current", expected_view="raw")
+    assert not (experiment.root/"current").exists()
+    updated = replot(experiment.root/"run", output=experiment.root/"current", expected_channel=original["channel"],
+                     expected_view="compensated")
+    assert json.loads((experiment.root/"run/metrics.json").read_text(encoding="utf-8")) == historical
     assert set(updated["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE"}
+    assert updated["comparison_algorithms"] == list(original["curves"])
     assert updated["parameters"] == original["parameters"]
     assert updated["report_generation"] == original["report_generation"]
     assert updated["nmse"] == original["nmse"]
@@ -390,7 +398,7 @@ def test_mmse_parameter_validation():
         resolve_parameters({"full_matrix_lmmse": {"iterations": 1}})
 
 
-@pytest.mark.parametrize("identifier", ("ep", "robust_ep"))
+@pytest.mark.parametrize("identifier", ("ep", "robust_ep", "mmse_pic"))
 def test_retired_algorithms_cannot_be_selected(identifier):
     with pytest.raises(ValueError, match="Unknown algorithms"):
         resolve_parameters({identifier: {}})

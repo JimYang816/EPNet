@@ -26,4 +26,4 @@ python -m scripts.evaluate.icr_training_perf --channel NOF1 --device cuda \
 
 该历史复核中的NOF1与NCS1均执行局部神经网络。NCS1预算余量较小，其他设备或配置应重新测量；固定CSI的单次完整矩阵LMMSE仍快于8层展开。预算基准是原Unfolding。NOF1原22层、修复版8层，不能把该表当作等深度的正式A–D消融。
 
-完整效率入口 `scripts.evaluate.icr_efficiency` 默认测量七种算法，接受明确的数据、正式比较报告及三个学习检查点，每算法独立进程测量，并记录初始化、稳态、参数量和峰值内存；当前正式路径的完整命令见 [ICR说明第6节](icr_mmse.md#6-验证与运行)。性能实验至少输出BER–SNR及平均NMSE–SNR，原始报告和不满足预期的指标均保留。
+完整效率入口 `scripts.evaluate.icr_efficiency` 默认测量六种算法，接受明确的数据、正式比较报告及三个学习检查点，每算法独立进程测量，并记录初始化、稳态、参数量和峰值内存；当前正式路径的完整命令见 [ICR说明第6节](icr_mmse.md#6-验证与运行)。性能实验至少输出BER–SNR及平均NMSE–SNR，原始报告和不满足预期的指标均保留。

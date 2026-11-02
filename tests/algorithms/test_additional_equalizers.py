@@ -1,4 +1,4 @@
-"""Independent receive-space references for both new full-matrix detectors."""
+"""Independent receive-space references for the OAMP-Net2 detector."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -10,7 +10,6 @@ torch = pytest.importorskip("torch")
 
 from src.algorithms.interface import EqualizerBatch
 from src.algorithms.likelihood import make_whitener
-from src.algorithms.mmse_pic.detector import equalize_batch as equalize_pic, mmse_pic
 from src.algorithms.oamp_net2.inference import equalize_batch as equalize_oamp
 from src.algorithms.oamp_net2.model import FEATURES, OAMPNet2
 from src.common.numerics import DenseBackend
@@ -40,34 +39,6 @@ def system(seed=51):
     residual += (np.linalg.cholesky(covariance)@noise[..., None])[..., 0]*np.sqrt(variances[:, None]/2)
     raw = residual+h@known
     return EqualizerBatch(h, raw, residual, variances, data, covariance)
-
-
-def pic_reference(h, y, covariance, iterations, damping, floor):
-    n = h.shape[1]
-    mean = np.zeros(n, complex)
-    variance = np.ones(n)
-    for _ in range(iterations):
-        proposed = np.zeros(n, complex)
-        for j in range(n):
-            others = np.arange(n) != j
-            r = covariance+(h[:, others]*variance[others])@h[:, others].conj().T
-            w = np.linalg.solve(r, h[:, j])
-            gain = np.vdot(h[:, j], w).real
-            observation = y-h[:, others]@mean[others]
-            proposed[j] = posterior(np.vdot(w, observation)/gain, np.array(1/gain))
-        mean = (1-damping)*mean+damping*proposed
-        variance = np.clip(1-abs(mean)**2, floor, 1)
-    return proposed
-
-
-@pytest.mark.parametrize("iterations,damping", [(1, 1.), (4, .5), (3, .8)])
-def test_pic_matches_independent_per_target_receive_covariance(iterations, damping):
-    batch, backend = system(), DenseBackend()
-    result = equalize_pic(batch, backend, whitener=make_whitener(batch.noise_covariance, backend),
-                         iterations=iterations, damping=damping)
-    expected = np.stack([pic_reference(h[:, batch.data_indices], y, variance*batch.noise_covariance,
-        iterations, damping, 1e-10) for h, y, variance in zip(batch.channel, batch.cancelled_observations, batch.variances)])
-    np.testing.assert_allclose(result.symbols, expected, rtol=2e-12, atol=2e-12)
 
 
 def oamp_reference(h, y, model):
@@ -126,14 +97,13 @@ def test_receive_gain_invariance_zero_and_rank_deficient_channels():
             h[..., 2] = h[..., 0]
         modified = EqualizerBatch(h, batch.raw_observations, batch.cancelled_observations,
                                  batch.variances, batch.data_indices, batch.noise_covariance)
-        for result in (equalize_oamp(modified, backend, model=model, whitener=whitener),
-                       equalize_pic(modified, backend, whitener=whitener, iterations=3)):
-            assert np.isfinite(result.symbols).all()
-            if zero:
-                np.testing.assert_array_equal(result.symbols, 0.)
+        result = equalize_oamp(modified, backend, model=model, whitener=whitener)
+        assert np.isfinite(result.symbols).all()
+        if zero:
+            np.testing.assert_array_equal(result.symbols, 0.)
 
 
-def test_torch_pic_and_spectral_preprocessing_match_numpy_without_cuda_hardware():
+def test_torch_spectral_preprocessing_matches_numpy_without_cuda_hardware():
     batch = system()
     backend = SimpleNamespace(torch=torch, device="cpu", array=torch.as_tensor,
                               numpy=lambda value: value.detach().cpu().numpy())
@@ -147,18 +117,3 @@ def test_torch_pic_and_spectral_preprocessing_match_numpy_without_cuda_hardware(
         f["matched"] = (f["eigenvectors"]@f["projected_matched"][..., None])[..., 0]
     np.testing.assert_allclose(features["gram"], numpy_features["gram"], atol=2e-13)
     np.testing.assert_allclose(features["matched"], numpy_features["matched"], atol=2e-13)
-    g, y = numpy_features["gram"], numpy_features["matched"]
-    actual = mmse_pic(torch.from_numpy(g), torch.from_numpy(y), backend, iterations=4)
-    expected = mmse_pic(g, y, DenseBackend(), iterations=4)
-    np.testing.assert_allclose(actual.numpy(), expected, atol=2e-13)
-
-
-@pytest.mark.parametrize("options", [{"iterations": 0}, {"iterations": True}, {"damping": 0}, {"variance_floor": float("nan")}])
-def test_pic_invalid_controls(options):
-    with pytest.raises(ValueError, match="controls"):
-        mmse_pic(np.eye(2)[None].astype(complex), np.zeros((1, 2), complex), DenseBackend(), **options)
-
-
-def test_pic_rejects_nonfinite_likelihood_instead_of_returning_uniform_decisions():
-    with pytest.raises(ValueError, match="Nonfinite"):
-        mmse_pic(np.full((1, 2, 2), np.nan, dtype=complex), np.zeros((1, 2), complex), DenseBackend())

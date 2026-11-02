@@ -19,8 +19,8 @@ from src.evaluation.result_cache import FileLock
 
 def plot_ber(report, path):
     report = normalize_report_labels(report)
-    colors = ("#667085", "#2477b3", "#0097a7", "#8b5cf6", "#df8028", "#15845b", "#b42a55")
-    markers = ("o", "s", "X", "P", "^", "D", "*")
+    colors = ("#667085", "#2477b3", "#0097a7", "#df8028", "#15845b", "#b42a55")
+    markers = ("o", "s", "X", "^", "D", "*")
     styles = dict(zip(SUPPORTED_CURVES, zip(colors, markers)))
     with plt.rc_context({"font.size": 11, "axes.spines.top": False, "axes.spines.right": False}):
         fig, ax = plt.subplots(figsize=(7.5, 5.2))
@@ -146,18 +146,25 @@ def publish_report(run, report, *, redraw_nmse=False):
             raise
 
 
-def replot(run):
-    """Use saved values only, preserving every original generation record."""
+def replot(run, *, output=None, expected_channel=None, expected_view=None):
+    """Redraw the retained curves from saved values, optionally in a new directory."""
     report = json.loads((Path(run)/"metrics.json").read_text(encoding="utf-8"))
-    retired = {"EP", "Robust EP"}
-    if retired.intersection(report.get("curves", {})):
-        report["curves"] = {name: curve for name, curve in report["curves"].items() if name not in retired}
-        report["parameters"] = {name: values for name, values in report.get("parameters", {}).items()
-                                if name not in {"ep", "robust_ep"}}
+    if expected_channel is not None and report.get("channel") != expected_channel:
+        raise ValueError(f"Saved report does not match channel {expected_channel}")
+    if expected_view is not None and report.get("input_view") != expected_view:
+        raise ValueError(f"Saved report does not match CSI view {expected_view}")
+    retired = {"EP": "ep", "Robust EP": "robust_ep", "MMSE-PIC": "mmse_pic"}
+    if {"EP", "Robust EP"}.intersection(report.get("curves", {})):
         for field in ("robust_covariance", "ep", "paper_doi", "rejected_sites"):
             report.pop(field, None)
+    for label, identifier in retired.items():
+        report.get("curves", {}).pop(label, None)
+        report.get("parameters", {}).pop(identifier, None)
+    if "comparison_algorithms" in report:
+        report["comparison_algorithms"] = [name for name in report["comparison_algorithms"] if name not in retired]
+    run = Path(run if output is None else output)
     publish_report(run, report, redraw_nmse=True)
     if report.get("schema") == "watermark-unified-comparison-v1":
         from src.evaluation.unified import _write_html
-        _write_html(Path(run), report)
+        _write_html(run, report)
     return report

@@ -40,7 +40,7 @@ python -m scripts.train.icr_mmse --channel NCS1 --stage joint --device cuda
 
 ## 3. 当前正式检查点与历史预算复核
 
-当前正式训练已在 `outputs/runs/icr_full_20261031_095549/` 完成，两信道均包含共同预训练、固定CSI分支和联合分支，`progress.json` 标记 `completed`。当前七算法配置引用下表的联合模型，UDNet也使用该实验的独立训练权重：
+当前正式训练已在 `outputs/runs/icr_full_20261031_095549/` 完成，两信道均包含共同预训练、固定CSI分支和联合分支，`progress.json` 标记 `completed`。当前六算法配置引用下表的联合模型，UDNet也使用该实验的独立训练权重：
 
 | 信道 | 固定CSI | 完整模型 |
 |---|---|---|
@@ -63,15 +63,15 @@ python -m scripts.run.icr_budgeted_study --split test --device cuda --resume
 
 该历史复核中，NOF1固定CSI相对未训练初始化没有显著学习收益，部分0 dB点仍差于LMMSE，联合CSI NMSE也未全面改善。单种子、物理记录配对区间不能证明训练随机性稳定或神经校准的独立贡献。完整负面结果和区间保存在历史冻结报告中。
 
-## 4. 七算法主比较
+## 4. 六算法主比较
 
-比较 Single-tap LMMSE、Full-matrix LMMSE、MMSE-DFE、MMSE-PIC、UDNet、OAMP-Net2 和当前 ICR-MMSE-Net，配置为 `configs/evaluation/ber_comparison.json`。2026-10-31双信道正式汇总已完成，默认结果为 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/{nof1,ncs1}/`，运行方法见 [统一评测](equalizer_comparison.md)。
+比较 Single-tap LMMSE、Full-matrix LMMSE、MMSE-DFE、UDNet、OAMP-Net2 和当前 ICR-MMSE-Net，配置为 `configs/evaluation/ber_comparison.json`。双信道报告默认输出到 `outputs/runs/equalizer_comparison_six/{nof1,ncs1}/`，运行方法见 [统一评测](equalizer_comparison.md)。
 
 ```bash
 python -m scripts.evaluate.compare --device cuda --threads 4
 ```
 
-七算法报告在既有六算法正式结果上新增MMSE-DFE，原六条曲线和输入/修正CSI NMSE的数值保持一致，核验记录见实验根目录的 `verification.json`。既有六算法完整结果仍位于 `icr_full_20261031_095549/comparison/`。后续更新检查点时，必须重新校验计算身份并完成所需评测，才能引用新结果。
+六算法报告沿用 2026-10-31 全量测试的误码计数及输入/修正 CSI NMSE，原始报告保存在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/`。后续更新检查点时，必须重新校验计算身份并完成所需评测，才能引用新结果。
 
 ## 5. 比较、消融与输出
 
@@ -113,7 +113,7 @@ python -m scripts.run.icr_ablation --trained-root outputs/runs/icr_full_20261031
 
 各信道的 `test/<channel>/comparison.json`、`comparison.csv` 保存完整逐SNR数值及四项配对区间，同目录包含BER/NMSE图；验证结果在对应 `validation/` 目录。D的测试平均BER最低，但30 dB的CSI NMSE仍弱于C，不能表述为所有指标均改善。该结果仍为单训练种子，配对区间反映物理记录间差异，不代表多种子稳定性。
 
-A–D内部统一使用冻结配置的 `complex64` 和对角噪声权重；七算法主比较中的传统Full-matrix LMMSE使用完整热噪声协方差及双精度。两类报告须分别引用，不能跨表替换A或D的误码计数。
+A–D内部统一使用冻结配置的 `complex64` 和对角噪声权重；六算法主比较中的传统Full-matrix LMMSE使用完整热噪声协方差及双精度。两类报告须分别引用，不能跨表替换A或D的误码计数。
 
 每次完整评测至少生成BER–SNR、平均完整矩阵NMSE–SNR，保留实际误码数、逐层结果、数据/代码/权重摘要、计时及物理记录配对统计。预算复核保留的 `legacy_20261030.py` 与 `legacy_lmmse_20261030.py` 是原推理快照，不能删除或当成活动训练模型。
 
@@ -121,12 +121,12 @@ A–D内部统一使用冻结配置的 `complex64` 和对角噪声权重；七�
 
 本地CPU验证覆盖新配置解析、两分支共享预训练、分组学习率、逐层参数学习审计及推理等价性。服务器按 `main` 同步代码后读取原数据和检查点。Git只保存代码、配置、测试与文档；数据、训练权重、旧结果和论文产物留在各自输出目录。
 
-正式效率入口默认对七种算法分别启动独立进程。以NOF1为例，必须使用与比较报告匹配的数据和三个正式检查点：
+正式效率入口默认对六种算法分别启动独立进程。以NOF1为例，必须使用与比较报告匹配的数据和三个正式检查点：
 
 ```bash
 python -m scripts.evaluate.icr_efficiency \
   --dataset data/processed/nof1_compact_20261026_final/test.h5 \
-  --comparison-report outputs/runs/equalizer_comparison_mmse_dfe_20261031/nof1/metrics.json \
+  --comparison-report outputs/runs/equalizer_comparison_six/nof1/metrics.json \
   --checkpoint outputs/runs/icr_full_20261031_095549/joint/nof1/icr_mmse.pt \
   --udnet-checkpoint outputs/runs/icr_full_20261031_095549/udnet/nof1/best.pt \
   --oamp-net2-checkpoint outputs/runs/oamp_net2_compensated/nof1/best.pt \
@@ -134,4 +134,4 @@ python -m scripts.evaluate.icr_efficiency \
   --device cuda --batch-size 2 --threads 4
 ```
 
-NCS1使用 `data/processed/ncs1_compact_20261026_nmse/test.h5`，其余信道路径切换为 `ncs1`。初始化、稳态耗时、参数量及峰值内存按实际报告引用；第3节的历史预算表或缓存内原始耗时不能替代当前七算法的独立效率测量。
+NCS1使用 `data/processed/ncs1_compact_20261026_nmse/test.h5`，其余信道路径切换为 `ncs1`。初始化、稳态耗时、参数量及峰值内存按实际报告引用；第3节的历史预算表或缓存内原始耗时不能替代当前六算法的独立效率测量。

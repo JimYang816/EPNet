@@ -23,10 +23,9 @@ ALGORITHMS = (
     Algorithm("full_matrix_lmmse", "Full-matrix LMMSE", "src.algorithms.MMSE.full_matrix", MATRIX),
 )
 # Keep the original defaults for callers producing the historical two-MMSE
-# report. The unified experiment explicitly opts into the additional comparators.
+# report. The unified experiment explicitly opts into MMSE-DFE.
 OPTIONAL_ALGORITHMS = (
     Algorithm("mmse_dfe", "MMSE-DFE", "src.algorithms.mmse_dfe.detector", MATRIX),
-    Algorithm("mmse_pic", "MMSE-PIC", "src.algorithms.mmse_pic.detector", MATRIX),
 )
 AVAILABLE_ALGORITHMS = ALGORITHMS+OPTIONAL_ALGORITHMS
 CURVES = tuple(a.label for a in ALGORITHMS)
@@ -58,18 +57,9 @@ def resolve_parameters(algorithm_parameters=None):
         if algorithm in OPTIONAL_ALGORITHMS and algorithm.identifier not in supplied:
             continue
         override = supplied.get(algorithm.identifier, {})
-        if algorithm.identifier == "mmse_pic":
-            from src.algorithms.mmse_pic.detector import controls
-            if not isinstance(override, dict):
-                raise ValueError("Invalid parameters for mmse_pic")
-            try:
-                result[algorithm.identifier] = controls(**override)
-            except TypeError as error:
-                raise ValueError("Invalid parameters for mmse_pic") from error
-        elif not isinstance(override, dict) or override:
+        if not isinstance(override, dict) or override:
             raise ValueError(f"Invalid parameters for {algorithm.identifier}")
-        else:
-            result[algorithm.identifier] = {}
+        result[algorithm.identifier] = {}
     return result
 
 

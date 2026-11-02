@@ -1,7 +1,7 @@
 # EPNet
 
 基于 WATERMARK NCS1／NOF1 的水声通信 AI 信道均衡研究项目，统一使用 Python。
-基于已验收的 compensated CSI，对比 Single-tap MMSE、Full-matrix LMMSE、MMSE-PIC、
+基于已验收的 compensated CSI，对比 Single-tap MMSE、Full-matrix LMMSE、MMSE-DFE、
 UDNet、OAMP-Net2 和 ICR-MMSE-Net；当前 ICR 默认采用 8 层联合 CSI 修正与 MMSE 展开。
 
 ## 文件目录结构

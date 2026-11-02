@@ -25,13 +25,13 @@ validateattributes(figureWidth, {'numeric'}, {'scalar', 'real', 'finite', 'posit
 
 channels = {'NOF1', 'NCS1'};
 algorithmIds = {'single_tap_mmse', 'full_matrix_lmmse', 'mmse_dfe', ...
-    'mmse_pic', 'udnet', 'oamp_net2', 'icr_mmse'};
+    'udnet', 'oamp_net2', 'icr_mmse'};
 algorithmNames = {'Single-tap LMMSE', 'Full-matrix LMMSE', 'MMSE-DFE', ...
-    'MMSE-PIC', 'UDNet', 'OAMP-Net2', 'CRU-Net'};
+    'UDNet', 'OAMP-Net2', 'CRU-Net'};
 colors = [102, 112, 133; 36, 119, 179; 0, 151, 167; ...
-    139, 92, 246; 223, 128, 40; 21, 132, 91; 180, 42, 85] / 255;
-markers = {'o', 's', 'x', '+', '^', 'd', 'p'};
-lineStyles = {'-', '--', '-.', ':', '--', '-.', '-'};
+    223, 128, 40; 21, 132, 91; 180, 42, 85] / 255;
+markers = {'o', 's', 'x', '^', 'd', 'p'};
+lineStyles = {'-', '--', '-.', '--', '-.', '-'};
 
 % 先核对两个报告，再创建图窗；按 identifier 匹配曲线。
 snr = cell(1, numel(channels));
@@ -116,7 +116,7 @@ for c = 1:numel(channels)
         'GridColor', [0.55, 0.55, 0.55], 'GridAlpha', 0.20, 'MinorGridAlpha', 0.10);
 end
 sharedLegend = legend(ax(1), curveHandles(1, :), algorithmNames, ...
-    'Orientation', 'horizontal', 'NumColumns', 4, 'Interpreter', 'none', ...
+    'Orientation', 'horizontal', 'NumColumns', 3, 'Interpreter', 'none', ...
     'FontName', 'Arial', 'FontSize', 8 * scale, 'Box', 'off', ...
     'Units', 'normalized', 'Location', 'none');
 drawnow;

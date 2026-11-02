@@ -36,7 +36,7 @@ for i = N-1, ..., 0:
 
 ## 运行与指标
 
-`configs/evaluation/ber_comparison.json` 已加入 `"mmse_dfe": {}`，默认统一比较七种算法。
+`configs/evaluation/ber_comparison.json` 已加入 `"mmse_dfe": {}`，默认统一比较六种算法。
 
 ```bash
 python -m scripts.evaluate.compare --device cuda --threads 4
@@ -47,9 +47,9 @@ python -m scripts.evaluate.compare --plot-only
 
 正式测试仍为每信道、每 SNR 600 帧、D1/D2、512 个数据槽，共 1,228,800 比特。
 新增结果单独缓存；已有其他算法及 NMSE 的有效缓存继续复用。
-`ber_snr.png` 包含七条曲线；`nmse_snr.png` 中 MMSE-DFE 共用固定输入 CSI 的平均 NMSE，
+`ber_snr.png` 包含六条曲线；`nmse_snr.png` 中 MMSE-DFE 共用固定输入 CSI 的平均 NMSE，
 ICR-MMSE-Net 另报修正后的平均 NMSE。检测器不修正 CSI，因此不另造一条重合的 NMSE 曲线。
-默认输出为 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/{nof1,ncs1}/`，保留既有六算法实验目录。
+默认输出为 `outputs/runs/equalizer_comparison_six/{nof1,ncs1}/`。
 
 ## 正式结果（2026-10-31）
 
@@ -65,5 +65,5 @@ ICR-MMSE-Net 另报修正后的平均 NMSE。检测器不修正 CSI，因此不�
 30 dB 时相对 Full-matrix LMMSE 的实测 BER 分别下降 16.16% 和 19.46%。
 原六算法的误码计数、BER、输入/修正 CSI 平均 NMSE 与原统一报告逐项一致，未重新训练模型。
 两信道七曲线 BER 图和平均 NMSE 图已通过目视检查及 SHA256 校验，并通过 SSH 带回本地。
-完整误码计数与来源见各信道 `metrics.json`，本地汇总核验记录为该实验根目录的 `verification.json`。
+上述历史结果及其核验记录保存在 `outputs/runs/equalizer_comparison_mmse_dfe_20261031/` 的信道报告和 `verification.json` 中。
 生成数据、数值结果、检查点和指标图均不提交到 Git。

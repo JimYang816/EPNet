@@ -19,11 +19,9 @@ from src.algorithms.oamp_net2.inference import equalize_batch
 from src.common.numerics import DenseBackend
 from src.data.compact import CompactDataset
 from src.data.oamp_net2_cache import build_features
-from src.evaluation import comparison
 from src.evaluation.fingerprints import DataIdentity, source_fingerprint
 from src.evaluation.inputs import prepare_batch
 from src.evaluation.oamp_net2 import evaluate
-from src.evaluation.registry import resolve_parameters
 from src.training.oamp_net2 import train
 
 
@@ -110,9 +108,9 @@ def test_label_free_inference_complete_evaluation_and_cache_reuse(experiment, mo
             batch = prepare_batch(ds, 0, [0, 1], 0, backend)
             result = equalize_batch(batch, backend, model=model, whitener=white)
             assert result.symbols.shape == (2, len(ds._indices)) and np.isfinite(result.symbols).all()
-    options = dict(batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_pic": {"iterations": 3}})
+    options = dict(batch_size=2, cache_dir=root/"cache")
     report = evaluate(directory/"test.h5", checkpoint, root/"evaluation", backend, **options)
-    assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE", "MMSE-PIC", "OAMP-Net2"}
+    assert set(report["curves"]) == {"Single-tap LMMSE", "Full-matrix LMMSE", "OAMP-Net2"}
     assert report["bits_per_snr"] == 64
     assert report["oamp_net2"]["sha256"]
     assert (root/"evaluation/ber_snr.png").is_file() and (root/"evaluation/nmse_snr.png").is_file()
@@ -127,24 +125,7 @@ def test_label_free_inference_complete_evaluation_and_cache_reuse(experiment, mo
         evaluate(directory/"validation.h5", checkpoint, root/"invalid-split", backend)
 
 
-def test_pic_addition_and_parameter_change_preserve_existing_mmse_caches(experiment):
-    directory, root = experiment
-    options = dict(batch_size=2, cache_dir=root/"cache")
-    original = comparison.evaluate(directory/"test.h5", root/"old", DenseBackend(), **options)
-    extended = comparison.evaluate(directory/"test.h5", root/"new", DenseBackend(),
-        algorithm_parameters={"mmse_pic": {"iterations": 2}}, **options)
-    for name in original["curves"]:
-        assert extended["curves"][name]["provenance"]["reused"]
-        assert extended["curves"][name]["provenance"]["cache_key"] == original["curves"][name]["provenance"]["cache_key"]
-    changed = comparison.evaluate(directory/"test.h5", root/"changed", DenseBackend(),
-        algorithm_parameters={"mmse_pic": {"iterations": 4}}, **options)
-    assert all(changed["curves"][name]["provenance"]["reused"] for name in original["curves"])
-    assert changed["curves"]["MMSE-PIC"]["provenance"]["cache_key"] != extended["curves"]["MMSE-PIC"]["provenance"]["cache_key"]
-    with pytest.raises(ValueError, match="Invalid parameters"):
-        resolve_parameters({"mmse_pic": {"unknown": 1}})
-
-
-def test_unified_seven_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
+def test_unified_six_algorithms_equal_test_counts_and_offline_replot(experiment, monkeypatch):
     from src.algorithms.icr_mmse.checkpoint import SCHEMA, FEEDBACK_LAYOUT, INFERENCE_CODE, atomic_save, cpu_state
     from src.algorithms.icr_mmse.model import ICRMMSEnet
     from src.training.udnet import train as train_udnet
@@ -164,7 +145,7 @@ def test_unified_seven_algorithms_equal_test_counts_and_offline_replot(experimen
             data_indices=dataset._indices.tolist(), snr_db=dataset.snr_db.tolist()))
     checkpoints = dict(udnet=udnet, oamp_net2=oamp, icr_mmse=icr)
     report = unified(directory/"test.h5", root/"unified", backend, checkpoints=checkpoints,
-        batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 3}}, bootstrap_samples=16)
+        batch_size=2, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}}, bootstrap_samples=16)
     assert tuple(report["curves"]) == ORDER
     assert all(curve["total_bits"] == [64, 64] for curve in report["curves"].values())
     assert report["input_view"] == "compensated"
@@ -175,13 +156,13 @@ def test_unified_seven_algorithms_equal_test_counts_and_offline_replot(experimen
         scope.setattr("src.evaluation.icr_mmse.evaluate", lambda *a, **kw: pytest.fail("Unchanged ICR recomputed"))
         scope.setattr("src.evaluation.udnet.equalize_batch", lambda *a, **kw: pytest.fail("Unchanged UDNet recomputed"))
         scope.setattr("src.evaluation.oamp_net2.equalize_batch", lambda *a, **kw: pytest.fail("Unchanged OAMP recomputed"))
-        changed = unified(directory/"test.h5", root/"pic-only-change", backend, checkpoints=checkpoints,
-            batch_size=1, cache_dir=root/"cache", algorithm_parameters={"mmse_dfe": {}, "mmse_pic": {"iterations": 4}}, bootstrap_samples=16)
+        changed = unified(directory/"test.h5", root/"without-dfe", backend, checkpoints=checkpoints,
+            batch_size=1, cache_dir=root/"cache", bootstrap_samples=16)
+    assert "MMSE-DFE" not in changed["curves"]
     assert changed["icr_mmse"]["evaluation_cache"]["reused"]
-    for name in ("Single-tap LMMSE", "Full-matrix LMMSE", "MMSE-DFE", "UDNet", "OAMP-Net2"):
+    for name in ("Single-tap LMMSE", "Full-matrix LMMSE", "UDNet", "OAMP-Net2"):
         assert changed["curves"][name]["provenance"]["reused"]
         assert changed["curves"][name]["errors"] == report["curves"][name]["errors"]
-    assert changed["curves"]["MMSE-PIC"]["provenance"]["cache_key"] != report["curves"]["MMSE-PIC"]["provenance"]["cache_key"]
     with h5py.File(directory/"test.h5", "r+") as test:
         test["samples/bits"][:] = 1-test["samples/bits"][:]
     (directory/"train.h5").rename(directory/"unavailable-training.h5")
@@ -190,12 +171,12 @@ def test_unified_seven_algorithms_equal_test_counts_and_offline_replot(experimen
         oamp_net2_checkpoint=oamp, batch_size=2, frame_limit=1, threads=2, output=root/"efficiency.json")
     rows = efficiency["algorithms"]
     assert {row["algorithm"] for row in rows} == set(AVAILABLE_IDENTIFIERS)
-    assert len({row["process_id"] for row in rows}) == 7
+    assert len({row["process_id"] for row in rows}) == 6
     assert all(row["blocks"] == 4 for row in rows) and not efficiency["test_labels_read"]
     assert all(row["setup_seconds"] > 0 and row["reconstruction_and_all_iterations_seconds"] > 0
                and row["peak_process_rss_bytes"] > 0 for row in rows)
-    assert all(row["parameters"] == 0 for row in rows[:4])
-    assert all(row["parameters"] > 0 for row in rows[4:])
+    assert {row["algorithm"] for row in rows if row["parameters"] == 0} == {"single_tap_mmse", "full_matrix_lmmse", "mmse_dfe"}
+    assert {row["algorithm"] for row in rows if row["parameters"] > 0} == {"udnet", "oamp_net2", "icr_mmse"}
     assert efficiency["reference_assisted_csi_construction"]
     assert efficiency["initial_provenance_validation_seconds"] > 0
     assert "train.h5" not in efficiency["data_identity"]
@@ -203,7 +184,6 @@ def test_unified_seven_algorithms_equal_test_counts_and_offline_replot(experimen
         assert row["setup_and_prediction_seconds"] == pytest.approx(
             row["setup_seconds"] + row["reconstruction_and_all_iterations_seconds"])
     assert json.loads((root/"efficiency.json").read_text(encoding="utf-8"))["input_view"] == "compensated"
-    assert next(row for row in rows if row["algorithm"] == "mmse_pic")["detector_controls"]["iterations"] == 3
     assert next(row for row in rows if row["algorithm"] == "oamp_net2")["parameters"] == 12
     with pytest.raises(FileNotFoundError, match="Missing oamp_net2"):
         unified(directory/"test.h5", root/"missing", backend, checkpoints={"oamp_net2": root/"missing.pt"})

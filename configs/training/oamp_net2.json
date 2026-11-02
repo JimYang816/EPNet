@@ -19,8 +19,7 @@
     "batch_size": 8,
     "algorithm_parameters": {
       "single_tap_mmse": {},
-      "full_matrix_lmmse": {},
-      "mmse_pic": {"iterations": 10, "damping": 0.5, "variance_floor": 1e-10}
+      "full_matrix_lmmse": {}
     }
   }
 }

@@ -59,8 +59,6 @@ def evaluate(dataset_path, run, backend, *, batch_size=8,
         raise ValueError("Batch size must be a positive integer")
     parameters = resolve_parameters(algorithm_parameters)
     algorithms = selected_algorithms(parameters)
-    if "mmse_pic" in parameters and input_view != "compensated":
-        raise ValueError("MMSE-PIC comparison requires compensated CSI")
     if "mmse_dfe" in parameters and input_view != "compensated":
         raise ValueError("MMSE-DFE comparison requires compensated CSI")
     forced = resolve_force(force)

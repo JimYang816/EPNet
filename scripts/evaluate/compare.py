@@ -26,15 +26,25 @@ def main():
     modes.add_argument("--force", nargs="+", choices=(*IDENTIFIERS, "icr_mmse", "all"), default=[],
                        help="Recompute selected detectors; all also refreshes OAMP-Net2 and ICR")
     modes.add_argument("--plot-only", action="store_true", help="Redraw saved complete reports without data or GPU")
+    parser.add_argument("--from-run", type=Path, help="With --plot-only, read saved reports from this root and write to the configured output")
     args = parser.parse_args()
+    if args.from_run is not None and not args.plot_only:
+        parser.error("--from-run requires --plot-only")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = json.loads(args.config.read_text(encoding="utf-8"))
     if args.baselines_only and "icr_mmse" in args.force:
         parser.error("--force icr_mmse requires learned checkpoints")
     if args.plot_only:
+        output = Path(config["output"])
+        if args.from_run is not None and args.from_run.resolve() == output.resolve():
+            parser.error("--from-run must differ from the configured output; omit it to redraw in place")
         for channel in config["datasets"]:
             if not args.channel or channel == args.channel:
-                replot(Path(config["output"])/channel.lower())
+                if args.from_run is None:
+                    replot(output/channel.lower())
+                else:
+                    replot(args.from_run/channel.lower(), output=output/channel.lower(), expected_channel=channel,
+                           expected_view=args.input_view or config.get("input_view", "compensated"))
         return
     with threadpool_limits(args.threads):
         backend = DenseBackend(args.device)
