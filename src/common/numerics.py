@@ -5,6 +5,18 @@ import numpy as np
 from scipy import linalg
 
 
+def default_device():
+    """Use CPU on Windows and CUDA on other systems when available."""
+    import platform
+    if platform.system() == "Windows":
+        return "cpu"
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 class DenseBackend:
     def __init__(self, device="cpu"):
         self.device = device

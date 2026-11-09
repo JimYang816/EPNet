@@ -1,5 +1,6 @@
 """Benchmark all six compensated-CSI detectors in fresh processes."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -16,7 +17,7 @@ def main():
     parser.add_argument("--udnet-checkpoint", type=Path, required=True)
     parser.add_argument("--oamp-net2-checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--threads", type=int, default=4)

@@ -1,5 +1,6 @@
 """Score ICR-MMSE-Net with full-matrix NMSE and record-grouped statistics."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -20,7 +21,7 @@ def main():
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--run", type=Path, required=True)
     parser.add_argument("--udnet-checkpoint", type=Path)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--operator-backend", choices=("dense", "dpss"), default="dense")
     args = parser.parse_args()

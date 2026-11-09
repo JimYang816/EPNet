@@ -1,5 +1,6 @@
 """Run configured equalizers on identical complete compensated-CSI test splits."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -16,7 +17,7 @@ from src.evaluation.registry import IDENTIFIERS
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/evaluation/ber_comparison.json"))
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))

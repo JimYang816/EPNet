@@ -1,5 +1,6 @@
 """Score OAMP-Net2 and traditional comparators on the complete test split."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -17,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/training/oamp_net2.json"))
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--force", action="store_true", help="Refresh OAMP-Net2; retain valid traditional caches")
     args = parser.parse_args()

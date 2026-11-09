@@ -1,4 +1,5 @@
 """Compare a frozen same-budget unfolding checkpoint against LMMSE and controls."""
+from src.common.numerics import default_device
 import argparse
 from pathlib import Path
 
@@ -15,7 +16,7 @@ def main():
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--split", choices=("validation", "test"), default="validation")
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--historical-lmmse", type=Path)

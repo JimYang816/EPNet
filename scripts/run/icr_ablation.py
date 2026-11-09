@@ -4,6 +4,7 @@ Training and selection use train/validation only. All four checkpoints are froze
 before validation/test scoring; reports never require a favorable performance ordering.
 """
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 from contextlib import ExitStack
@@ -217,7 +218,7 @@ def main():
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--trained-root", type=Path, required=True, help="Completed current shared-warmup B/D training")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()

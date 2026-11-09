@@ -1,4 +1,5 @@
 """Train the current shared warmup, fixed-CSI and joint ICR-MMSE branches."""
+from src.common.numerics import default_device
 import argparse
 import json
 import logging
@@ -15,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--resume", action="store_true")

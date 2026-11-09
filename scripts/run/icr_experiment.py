@@ -4,6 +4,7 @@ Run under nohup on the server. Each phase has its own process/log; progress.json
 records failures as well as completion. Existing experiments are never replaced.
 """
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 from copy import deepcopy
@@ -182,7 +183,7 @@ def main():
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--comparison-config", type=Path, default=Path("configs/evaluation/ber_comparison.json"))
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()

@@ -1,4 +1,5 @@
 """Check frozen deployment against checkpoint inference on validation inputs."""
+from src.common.numerics import default_device
 import os
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
@@ -24,7 +25,7 @@ def main():
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args()
     if args.output.exists():

@@ -26,8 +26,8 @@
 
 ## 开发与运行方式
 
-- **本地**：在 `D:\SCI\code\EPNet` 生成和修改代码，仅用 CPU 和少量测试数据验证能跑通即可。
+- **本地**：在 `D:\SCI\code\EPNet` 生成和修改代码，仅用 CPU 和少量测试数据验证能跑通即可。服务器运行默认在 CUDA 可用时使用 GPU，CUDA 不可用时使用 CPU。
 - **Git 提交**：提交信息统一使用中文。
 - **代码同步**：本地验证通过后推送至 GitHub 仓库 `https://github.com/JimYang816/EPNet.git`，服务器拉取对应版本后再正式运行。
-- **远程运行**：通过 `ssh lab448` 连接 Linux 服务器，项目目录为 `/home/fay/JimYang/EPNet`。运行前检查可用资源，根据实际配置使用 GPU 进行正式计算。
+- **远程运行**：通过 `ssh lab448` 连接 Linux 服务器，项目目录为 `/home/fay/JimYang/EPNet`。服务器使用公共 Conda 环境 `jimyang`，解释器为 `/home/fay/anaconda3/envs/jimyang/bin/python`。运行前检查可用资源，根据实际配置使用 GPU 进行正式计算。
 - **数据与结果**：完整数据留在服务器，实验结果通过 SSH 文件传输带回本地；GitHub 只同步代码、测试、配置和文档。

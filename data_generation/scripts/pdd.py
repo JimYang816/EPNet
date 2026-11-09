@@ -1,5 +1,6 @@
 """Generate and accept shared NOF1/NCS1 datasets; no equalization or training."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ def main(argv=None):
     parser.add_argument('--config', type=Path)
     parser.add_argument('--watermark', type=Path, default=ROOT/'data/raw/watermark/WatermarkV1.zip')
     parser.add_argument('--run-id', required=True)
-    parser.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
+    parser.add_argument('--device', choices=('cpu', 'cuda'), default=default_device())
     parser.add_argument('--threads', type=int, default=4)
     parser.add_argument('--workers', type=int, default=1, help='Bounded CPU physical-window workers; HDF5 has one writer')
     parser.add_argument('--smoke', action='store_true', help='One window per split, test repeats=2; full fixed DPSS and all SNRs')

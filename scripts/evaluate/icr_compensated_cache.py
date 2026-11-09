@@ -1,5 +1,6 @@
 """Compare exact compensated inputs, gradients and throughput with a frozen cache pipeline."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 from contextlib import ExitStack
@@ -165,7 +166,7 @@ def main():
     parser.add_argument("--baseline-ref", required=True)
     parser.add_argument("--config", type=Path, required=True, help="Archived flat config for this historical cache-only diagnostic")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--frames", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--repeats", type=int, default=2)

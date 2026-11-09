@@ -1,5 +1,6 @@
 """Sequential frozen evaluation of both channels and CSI-correction settings."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import gc
@@ -43,7 +44,7 @@ def acceptance(report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=("validation", "test"), default="validation")
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--revision", default="exact_legacy", help="Separate output for the source-authenticated legacy baseline")

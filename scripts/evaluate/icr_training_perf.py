@@ -1,5 +1,6 @@
 """Validate ICR equivalence, then select a batch by isolated training trials."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -15,7 +16,7 @@ def main():
     parser.add_argument("--channel", choices=("NOF1", "NCS1"), required=True)
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--operator-backend", choices=("dense_device", "dpss"), default="dense_device")
     parser.add_argument("--batch-sizes", type=int, nargs="+", default=[2, 4, 8, 16, 32, 64, 128])
     parser.add_argument("--stages", choices=("A", "B", "C"), nargs="+", default=["A", "B", "C"])

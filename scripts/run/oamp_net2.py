@@ -1,5 +1,6 @@
 """Train OAMP-Net2, score complete tests, then remove disposable spectral caches."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -32,7 +33,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/training/oamp_net2.json"))
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--keep-features", action="store_true")

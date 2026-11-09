@@ -1,5 +1,6 @@
 """Train independent NOF1/NCS1 ICR-MMSE-Net models in stages A/B/C."""
 from __future__ import annotations
+from src.common.numerics import default_device
 
 import argparse
 import json
@@ -19,7 +20,7 @@ def main():
     parser.add_argument("--config", type=Path, default=Path("configs/training/icr_mmse.json"))
     parser.add_argument("--channel", choices=("NOF1", "NCS1"))
     parser.add_argument("--stage", choices=STAGES, default="joint")
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default=default_device())
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--resume", action="store_true")
